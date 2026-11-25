@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chorus-crdt-collab"
+version = "1.0.0"
+description = "ChorusCRDT: Multiplayer Human + AI Document Workspace with Yata Sequence CRDT, Relative Cursor Anchors, Binary StateVector Delta Sync, and Selective Per-Actor Undo on Amazon Bedrock"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Ritwika Reddy Kancharla" }]
+dependencies = ["boto3>=1.34.0"]
+
+[tool.setuptools.packages.find]
+include = ["chorus_crdt*"]

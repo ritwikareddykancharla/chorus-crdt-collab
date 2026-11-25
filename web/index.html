@@ -1,0 +1,2583 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChorusCRDT: A Multiplayer Document Workspace Where Engineers and AI Teammates Edit Together</title>
+  <meta name="description" content="ChorusCRDT is a multiplayer document workspace built around a scratch Yata sequence CRDT, relative cursor anchors, compact varint StateVector binary deltas, live Amazon Bedrock co-editing, and selective per-author undo." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&amp;family=Martian+Mono:wght@400;500;600;700&amp;family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&amp;family=Schibsted+Grotesk:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-paper: #FAF7F2;
+      --bg-card: #FFFFFF;
+      --bg-subtle: #F2ECE1;
+      --bg-obsidian: #141413;
+      --bg-code: #121417;
+      --text-code: #F4F4F5;
+      --ink: #141413;
+      --ink-muted: #52514E;
+      --border: #18181B;
+      --shadow: 4px 4px 0px #18181B;
+      --shadow-sm: 2px 2px 0px #18181B;
+      --dot-color: rgba(24, 24, 27, 0.13);
+      --accent-main: #7C3AED;
+      --accent-ink: #FFFFFF;
+      --accent-soft: #EDE9FE;
+      --accent-deep: #4C1D95;
+      --blue: #1D4ED8;
+      --blue-soft: #DBEAFE;
+      --pass: #059669;
+      --pass-soft: #D1FAE5;
+      --fail: #DC2626;
+      --fail-soft: #FEE2E2;
+      --warn: #D97706;
+      --warn-soft: #FEF3C7;
+      --teal: #0F766E;
+      --teal-soft: #CCFBF1;
+    }
+
+    [data-theme="dark"] {
+      --bg-paper: #0E1113;
+      --bg-card: #161A1E;
+      --bg-subtle: #1F252B;
+      --bg-obsidian: #090B0C;
+      --bg-code: #090B0D;
+      --text-code: #E4E4E7;
+      --ink: #F4F4F5;
+      --ink-muted: #A1A1AA;
+      --border: #52525B;
+      --shadow: 4px 4px 0px #000000;
+      --shadow-sm: 2px 2px 0px #000000;
+      --dot-color: rgba(255, 255, 255, 0.08);
+      --accent-main: #8B5CF6;
+      --accent-ink: #FFFFFF;
+      --accent-soft: #2E1065;
+      --accent-deep: #DDD6FE;
+      --blue: #60A5FA;
+      --blue-soft: #1E293B;
+      --pass: #34D399;
+      --pass-soft: #064E3B;
+      --fail: #F87171;
+      --fail-soft: #450A0A;
+      --warn: #FBBF24;
+      --warn-soft: #451A03;
+      --teal: #2DD4BF;
+      --teal-soft: #134E4A;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-paper);
+      background-image: radial-gradient(var(--dot-color) 1.25px, transparent 1.25px);
+      background-size: 20px 20px;
+      color: var(--ink);
+      line-height: 1.68;
+      padding-bottom: 4.5rem;
+    }
+
+    .serif { font-family: 'Newsreader', Georgia, serif; }
+    .mono { font-family: 'Martian Mono', monospace; }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 1.6rem;
+    }
+
+    /* Sticky Topbar + Sticky Scroll-Spy Section TOC */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 120;
+      background: var(--bg-paper);
+      border-bottom: 2px solid var(--border);
+      padding: 0.78rem 0;
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.85rem;
+      flex-wrap: wrap;
+    }
+
+    .toc-bar {
+      position: sticky;
+      top: 59px;
+      z-index: 110;
+      background: var(--bg-subtle);
+      border-bottom: 2px solid var(--border);
+      padding: 0.52rem 0;
+    }
+
+    .toc-inner {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.72rem;
+    }
+
+    .toc-link {
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+      padding: 0.24rem 0.62rem;
+      border: 1.5px solid var(--border);
+      background: var(--bg-card);
+      transition: background 0.12s ease, transform 0.08s ease;
+    }
+
+    .toc-link:hover {
+      background: var(--accent-soft);
+      transform: translate(-1px, -1px);
+    }
+
+    .toc-link.active {
+      background: var(--accent-main);
+      color: var(--accent-ink);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      font-weight: 800;
+      font-size: 1.16rem;
+      letter-spacing: -0.02em;
+      text-decoration: none;
+      color: var(--ink);
+    }
+
+    .brand-badge {
+      background: var(--accent-main);
+      color: var(--accent-ink);
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.72rem;
+      padding: 0.22rem 0.58rem;
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow-sm);
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .btn, .nav-pill {
+      font-family: 'Schibsted Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 0.84rem;
+      padding: 0.5rem 0.92rem;
+      border: 2px solid var(--border);
+      background: var(--bg-card);
+      color: var(--ink);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.12s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .btn:hover, .nav-pill:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: var(--shadow);
+    }
+
+    .btn:active, .nav-pill:active {
+      transform: translate(1px, 1px);
+      box-shadow: 1px 1px 0px var(--border);
+    }
+
+    .btn:disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-accent { background: var(--accent-main); color: var(--accent-ink); }
+    .btn-obsidian { background: #18181B; color: #FAF7F2; }
+    [data-theme="dark"] .btn-obsidian { background: var(--accent-main); color: #FFFFFF; }
+    .btn-secondary { background: var(--bg-subtle); }
+    .btn-danger { background: var(--fail-soft); color: var(--fail); }
+
+    /* Hero */
+    .hero {
+      padding: 2.6rem 0 2.3rem;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .hero-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.05rem;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 0.3rem 0.7rem;
+      background: var(--accent-main);
+      color: var(--accent-ink);
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .runtime-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.3rem 0.7rem;
+      background: var(--bg-card);
+      color: var(--ink);
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--pass);
+      display: inline-block;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 3.6vw, 2.85rem);
+      font-weight: 800;
+      line-height: 1.13;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.95rem;
+      max-width: 1040px;
+    }
+
+    .hero-sub {
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: clamp(1.15rem, 1.85vw, 1.34rem);
+      line-height: 1.64;
+      color: var(--ink-muted);
+      max-width: 1020px;
+      margin-bottom: 1.35rem;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.68rem;
+      margin-bottom: 1.45rem;
+    }
+
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.1rem;
+      margin-top: 1.1rem;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 1.4rem;
+    }
+
+    .kpi-card {
+      padding: 1.15rem 1.25rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 5px;
+      background: var(--accent-main);
+      border-bottom: 1.5px solid var(--border);
+    }
+
+    .kpi-val {
+      font-family: 'Martian Mono', monospace;
+      font-size: 1.38rem;
+      font-weight: 700;
+      color: var(--ink);
+      margin-top: 0.25rem;
+    }
+
+    .kpi-label { font-size: 0.88rem; font-weight: 800; color: var(--ink); margin-top: 0.24rem; }
+    .kpi-sub { font-size: 0.8rem; color: var(--ink-muted); margin-top: 0.28rem; line-height: 1.5; }
+
+    .pipeline-bar {
+      margin-top: 1.45rem;
+      background: var(--bg-obsidian);
+      color: #FAF7F2;
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 0.95rem 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.7rem;
+      flex-wrap: wrap;
+    }
+
+    .pipe-step { display: flex; align-items: center; gap: 0.5rem; font-size: 0.84rem; font-weight: 600; }
+    .pipe-num {
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.7rem;
+      font-weight: 700;
+      background: var(--accent-main);
+      color: #FFFFFF;
+      padding: 0.14rem 0.44rem;
+      border: 1.5px solid #FFFFFF;
+    }
+    .pipe-arrow { color: #C4B5FD; font-family: 'Martian Mono', monospace; font-weight: 700; }
+
+    /* Sections */
+    .section {
+      padding: 2.8rem 0 2.5rem;
+      border-bottom: 2px solid var(--border);
+      scroll-margin-top: 114px;
+    }
+
+    .section-kicker {
+      display: inline-block;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--accent-main);
+      margin-bottom: 0.35rem;
+    }
+    [data-theme="dark"] .section-kicker { color: #DDD6FE; }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 1.1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.45rem;
+    }
+
+    .section-title {
+      font-size: 1.62rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+
+    .section-desc {
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: 1.15rem;
+      line-height: 1.62;
+      color: var(--ink-muted);
+      max-width: 900px;
+      margin-top: 0.32rem;
+    }
+
+    .overview-callout {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-left: 7px solid var(--accent-main);
+      box-shadow: var(--shadow);
+      padding: 1.35rem 1.5rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.96rem;
+      line-height: 1.72;
+    }
+
+    .overview-callout h3 {
+      font-size: 1.05rem;
+      font-weight: 800;
+      margin-bottom: 0.45rem;
+    }
+
+    .scenario-card {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 1.45rem 1.55rem;
+      margin-top: 1.5rem;
+    }
+
+    .scenario-steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 980px) { .scenario-steps { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 580px) { .scenario-steps { grid-template-columns: 1fr; } }
+
+    .scenario-step {
+      background: var(--bg-subtle);
+      border: 1.5px solid var(--border);
+      padding: 1rem 1.05rem;
+      font-size: 0.88rem;
+      line-height: 1.65;
+    }
+
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.05rem;
+      margin-bottom: 1.25rem;
+    }
+
+    @media (max-width: 980px) { .problem-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 580px) { .problem-grid { grid-template-columns: 1fr; } }
+
+    .problem-card {
+      padding: 1.2rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+
+    .step-badge {
+      display: inline-block;
+      align-self: flex-start;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.18rem 0.52rem;
+      background: var(--accent-soft);
+      color: var(--accent-main);
+      border: 1.5px solid var(--border);
+      text-transform: uppercase;
+    }
+    [data-theme="dark"] .step-badge { color: #DDD6FE; }
+
+    .problem-card h3 { font-size: 1.04rem; font-weight: 800; line-height: 1.3; }
+    .problem-card p { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.66; }
+
+    /* Subsystem & Trade-Off Cards */
+    .module-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.4rem;
+    }
+
+    @media (max-width: 940px) { .module-grid { grid-template-columns: 1fr; } }
+
+    .module-card {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .module-card-head {
+      background: var(--bg-obsidian);
+      color: #FAF7F2;
+      padding: 0.65rem 1.1rem;
+      border-bottom: 2px solid var(--border);
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .module-card-body {
+      padding: 1.25rem 1.35rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      flex: 1;
+    }
+
+    .prose-block {
+      background: var(--bg-paper);
+      border: 1.5px solid var(--border);
+      padding: 0.88rem 1.02rem;
+      font-size: 0.91rem;
+      line-height: 1.68;
+      color: var(--ink);
+    }
+
+    .prose-block-tech {
+      background: var(--bg-subtle);
+      border: 1.5px solid var(--border);
+      padding: 0.88rem 1.02rem;
+      font-size: 0.88rem;
+      line-height: 1.68;
+      color: var(--ink-muted);
+    }
+
+    /* Architecture Canvas (§02) */
+    .arch-canvas-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      padding: 0.72rem 1rem;
+      background: var(--bg-subtle);
+      border: 2px solid var(--border);
+      border-bottom: none;
+    }
+
+    .arch-canvas-viewport {
+      background-color: #FFFFFF;
+      background-image: radial-gradient(rgba(24, 24, 27, 0.14) 1px, transparent 1px);
+      background-size: 18px 18px;
+      border: 2px solid #18181B;
+      box-shadow: 4px 4px 0px #18181B;
+      overflow-x: auto;
+      padding: 0.9rem;
+    }
+
+    .arch-canvas-svg {
+      display: block;
+      width: 100%;
+      min-width: 980px;
+      height: auto;
+      transition: width 0.22s ease, min-width 0.22s ease;
+    }
+
+    .arch-canvas-svg.zoom-125 {
+      width: 125%;
+      min-width: 1225px;
+    }
+
+    .svg-title { font-family: 'Caveat', cursive; }
+    .svg-mono { font-family: 'Martian Mono', monospace; }
+
+    .arch-node {
+      cursor: pointer;
+      transition: filter 0.15s ease;
+    }
+
+    .arch-node:hover {
+      filter: drop-shadow(3px 3px 0px #7C3AED);
+    }
+
+    .arch-node.selected .arch-stroke-main {
+      stroke: #7C3AED !important;
+      stroke-width: 3.2px !important;
+    }
+
+    .arch-inspector {
+      margin-top: 1.05rem;
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 1.15rem 1.3rem;
+    }
+
+    .arch-node-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.42rem;
+      margin-bottom: 0.9rem;
+    }
+
+    .arch-node-pill {
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.69rem;
+      font-weight: 700;
+      padding: 0.28rem 0.6rem;
+      border: 1.5px solid var(--border);
+      background: var(--bg-subtle);
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .arch-node-pill.active {
+      background: var(--accent-main);
+      color: #FFFFFF;
+    }
+
+    /* Interactive Demo Tabs */
+    .tab-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.78rem;
+      margin-bottom: 1.45rem;
+    }
+
+    @media (max-width: 960px) { .tab-bar { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 580px) { .tab-bar { grid-template-columns: 1fr; } }
+
+    .tab-btn {
+      text-align: left;
+      padding: 0.98rem 1.05rem;
+      background: var(--bg-card);
+      color: var(--ink);
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.12s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 0.34rem;
+    }
+
+    .tab-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow); }
+    .tab-btn.active {
+      background: var(--accent-main);
+      color: var(--accent-ink);
+      box-shadow: var(--shadow);
+      transform: translate(-1px, -1px);
+    }
+
+    .tab-btn-eyebrow { font-family: 'Martian Mono', monospace; font-size: 0.66rem; font-weight: 700; text-transform: uppercase; opacity: 0.88; }
+    .tab-btn-title { font-size: 0.95rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.25; }
+    .tab-btn-desc { font-size: 0.78rem; line-height: 1.45; opacity: 0.92; }
+    .tab-btn-metric { font-family: 'Martian Mono', monospace; font-size: 0.66rem; font-weight: 700; opacity: 0.92; margin-top: 0.15rem; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .sim-header {
+      margin-bottom: 1.15rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .sim-title { font-size: 1.38rem; font-weight: 800; letter-spacing: -0.02em; }
+    .sim-desc { font-family: 'Newsreader', Georgia, serif; font-size: 1.09rem; color: var(--ink-muted); max-width: 860px; margin-top: 0.25rem; }
+
+    .grid-2 { display: grid; grid-template-columns: 1.04fr 1.16fr; gap: 1.3rem; align-items: start; }
+    .grid-equal { display: grid; grid-template-columns: 1fr 1fr; gap: 1.3rem; align-items: start; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.95rem; align-items: stretch; }
+    @media (max-width: 940px) { .grid-2, .grid-equal, .grid-3 { grid-template-columns: 1fr; } }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.18rem 0.52rem;
+      border: 1.5px solid var(--border);
+      text-transform: uppercase;
+    }
+
+    .tag-accent { background: var(--accent-main); color: var(--accent-ink); }
+    .tag-soft { background: var(--accent-soft); color: var(--accent-main); }
+    [data-theme="dark"] .tag-soft { color: #DDD6FE; }
+    .tag-pass { background: var(--pass-soft); color: var(--pass); }
+    .tag-fail { background: var(--fail-soft); color: var(--fail); }
+    .tag-warn { background: var(--warn-soft); color: var(--warn); }
+    .tag-blue { background: var(--blue-soft); color: var(--blue); }
+
+    /* Multiplayer Document Surface & Presence Bar */
+    .presence-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      background: var(--bg-obsidian);
+      color: #FAF7F2;
+      border: 2px solid var(--border);
+      border-bottom: none;
+      padding: 0.6rem 0.95rem;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.7rem;
+    }
+
+    .peer-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.38rem;
+      padding: 0.2rem 0.55rem;
+      border: 1.5px solid #52525B;
+      background: #1F2024;
+      font-size: 0.68rem;
+      font-weight: 700;
+    }
+
+    .peer-dot-maya { width: 8px; height: 8px; border-radius: 50%; background: #34D399; display: inline-block; }
+    .peer-dot-nova { width: 8px; height: 8px; border-radius: 50%; background: #A78BFA; display: inline-block; }
+    .peer-dot-alex { width: 8px; height: 8px; border-radius: 50%; background: #60A5FA; display: inline-block; }
+
+    .doc-surface {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      box-shadow: var(--shadow-sm);
+      padding: 1.15rem 1.25rem;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.76rem;
+      line-height: 1.72;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 410px;
+      overflow-y: auto;
+    }
+
+    .span-human-maya {
+      background: var(--pass-soft);
+      border-bottom: 2px solid var(--pass);
+      padding: 0.05rem 0.2rem;
+    }
+
+    .span-ai-nova {
+      background: var(--accent-soft);
+      border-bottom: 2px solid var(--accent-main);
+      padding: 0.05rem 0.2rem;
+    }
+
+    .span-human-alex {
+      background: var(--blue-soft);
+      border-bottom: 2px solid var(--blue);
+      padding: 0.05rem 0.2rem;
+    }
+
+    .cursor-flag {
+      display: inline-block;
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 0.04rem 0.34rem;
+      margin-left: 2px;
+      vertical-align: middle;
+      color: #FFFFFF;
+      border: 1px solid #18181B;
+    }
+    .cursor-maya { background: #059669; }
+    .cursor-nova { background: #7C3AED; }
+    .cursor-alex { background: #1D4ED8; }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.83rem;
+      font-weight: 700;
+      margin-bottom: 0.38rem;
+    }
+
+    textarea, select, input[type="text"], input[type="number"] {
+      width: 100%;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.75rem;
+      padding: 0.62rem 0.76rem;
+      background: var(--bg-paper);
+      color: var(--ink);
+      border: 2px solid var(--border);
+      line-height: 1.52;
+    }
+    textarea:focus, select:focus, input:focus { outline: 2px solid var(--accent-main); outline-offset: 1px; }
+
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg-subtle);
+      border: 2px solid var(--border);
+      border-bottom: none;
+      padding: 0.48rem 0.85rem;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.71rem;
+      font-weight: 700;
+    }
+
+    .code-box {
+      background: var(--bg-code);
+      color: var(--text-code);
+      border: 2px solid var(--border);
+      padding: 0.95rem 1.05rem;
+      font-family: 'Martian Mono', monospace;
+      font-size: 0.73rem;
+      line-height: 1.58;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+
+    .verdict-banner {
+      border: 2px solid var(--border);
+      padding: 0.88rem 1.02rem;
+      margin-bottom: 0.9rem;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+    }
+    .verdict-allow { background: var(--pass-soft); }
+    .verdict-warn { background: var(--warn-soft); }
+    .verdict-accent { background: var(--accent-soft); }
+
+    .table-wrap { overflow-x: auto; border: 2px solid var(--border); background: var(--bg-card); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { padding: 0.62rem 0.76rem; text-align: left; border-bottom: 1.5px solid var(--border); }
+    th { background: var(--bg-subtle); font-family: 'Martian Mono', monospace; font-size: 0.68rem; text-transform: uppercase; font-weight: 700; }
+    tr:last-child td { border-bottom: none; }
+
+    .tx-item {
+      border: 1.5px solid var(--border);
+      background: var(--bg-paper);
+      padding: 0.68rem 0.85rem;
+      margin-bottom: 0.55rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .bar-group { display: flex; flex-direction: column; gap: 0.65rem; margin: 0.8rem 0; }
+    .bar-row { display: flex; flex-direction: column; gap: 0.24rem; }
+    .bar-meta { display: flex; justify-content: space-between; font-family: 'Martian Mono', monospace; font-size: 0.72rem; font-weight: 600; }
+    .bar-track { width: 100%; height: 16px; background: var(--bg-subtle); border: 1.5px solid var(--border); overflow: hidden; }
+    .bar-fill { height: 100%; transition: width 0.28s ease; }
+    .bar-fill-accent { background: var(--accent-main); }
+    .bar-fill-pass { background: var(--pass); }
+
+    .footer {
+      margin-top: 2.8rem;
+      padding-top: 1.6rem;
+      border-top: 2px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      font-size: 0.84rem;
+      color: var(--ink-muted);
+    }
+  </style>
+</head>
+<body>
+  <!-- Sticky Topbar -->
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a href="#top" class="brand">
+        <span class="brand-badge">CHORUSCRDT v1.0</span>
+        <span>ChorusCRDT</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary Navigation">
+        <a class="nav-pill" href="https://d3gk5qze5xyz7y.cloudfront.net" target="_blank" rel="noopener">DeskPilot ↗</a>
+        <a class="nav-pill" href="https://d33vgp4hlabu23.cloudfront.net" target="_blank" rel="noopener">ForgeRuntime ↗</a>
+        <a class="btn btn-obsidian" href="https://github.com/ritwikareddykancharla/chorus-crdt-collab" target="_blank" rel="noopener">★ GitHub Repo</a>
+        <button type="button" class="btn btn-secondary" id="themeToggleBtn" aria-label="Toggle color theme">
+          <span id="themeIcon">🌙</span>
+          <span id="themeLabel">Dark Mode</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Sticky Scroll-Spy Section TOC -->
+  <nav class="toc-bar" aria-label="Section Navigation">
+    <div class="container toc-inner">
+      <span style="font-weight:700; color:var(--ink-muted);">SECTIONS:</span>
+      <a class="toc-link active" href="#problem" data-spy-link="problem">01 · Problem</a>
+      <a class="toc-link" href="#architecture" data-spy-link="architecture">02 · Architecture</a>
+      <a class="toc-link" href="#implementation" data-spy-link="implementation">03 · Implementation</a>
+      <a class="toc-link" href="#tradeoffs" data-spy-link="tradeoffs">04 · Trade-Offs</a>
+      <a class="toc-link" href="#studio" data-spy-link="studio">05 · Live Demo</a>
+      <a class="toc-link" href="#benchmarks" data-spy-link="benchmarks">06 · Benchmarks</a>
+    </div>
+  </nav>
+
+  <main class="container" id="top">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-top-row">
+        <div class="eyebrow">Collaborative AI Workspaces · Built for AWS Applied AI Chorus</div>
+        <div class="runtime-pill" id="runtimePill">
+          <span class="pulse-dot"></span>
+          <span id="runtimeModeText">Live Interactive Demo · Powered by Amazon Bedrock</span>
+        </div>
+      </div>
+
+      <h1>ChorusCRDT: A Multiplayer Document Workspace Where Engineers and AI Teammates Edit Together</h1>
+      <p class="hero-sub">
+        When an AI teammate rewrites a section while you type above it, ordinary character positions shift and scramble your draft. ChorusCRDT pins cursors and AI edits to stable anchors, merges simultaneous changes cleanly, and undoes any single author without losing newer work.
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn btn-accent" href="#studio">▶ Try the Live Workspace ↓</a>
+        <a class="btn btn-secondary" href="#architecture">See How It Works ↓</a>
+        <a class="btn btn-secondary" href="#benchmarks">View Test Results ↓</a>
+      </div>
+
+      <div class="kpi-strip" id="heroKpiStrip"></div>
+
+      <div class="pipeline-bar" role="region" aria-label="ChorusCRDT Sync Flow">
+        <div class="pipe-step"><span class="pipe-num">01</span><span>Pin Cursor &amp; AI Selection to Item IDs</span></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="pipe-num">02</span><span>Apply Concurrent Human + Bedrock Edits</span></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="pipe-num">03</span><span>Exchange 150 B Binary StateVector Deltas</span></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="pipe-num">04</span><span>Converge &amp; Support Per-Author Undo</span></div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- 01 · PROBLEM                                                        -->
+    <!-- =================================================================== -->
+    <section id="problem" class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-kicker">01 · Problem</span>
+          <h2 class="section-title">Problem</h2>
+          <p class="section-desc">
+            Treating an AI model as a real peer inside a shared engineering document exposes four distributed-state problems whenever humans and agents type at the same moment.
+          </p>
+        </div>
+        <span class="tag tag-accent">Multiplayer Human + AI Sync</span>
+      </div>
+
+      <div class="overview-callout">
+        <h3>Overview</h3>
+        <p>
+          ChorusCRDT implements a sequence Conflict-Free Replicated Data Type from scratch in Python 3.12 without external CRDT packages. Every character carries an immutable <code>(actor_id, lamport_clock)</code> identifier alongside its causal left and right neighbors (<code>origin_left</code> and <code>origin_right</code>). Before Amazon Bedrock (<code>us.amazon.nova-lite-v1:0</code>) rewrites a selected paragraph, ChorusCRDT binds a <code>RelativeRange</code> to those item IDs so concurrent human edits above the paragraph shift the resolved offsets automatically without slicing characters. Peers reconcile offline or reordered edits using compact <code>18 B</code> varint <code>StateVector</code> headers and run-length compressed binary deltas (<code>150.0 B</code> median wire exchange, <code>99.98%</code> smaller than full CRDT JSON snapshots), persisted in SQLite WAL checkpoints.
+        </p>
+      </div>
+
+      <div class="problem-grid">
+        <div class="card problem-card">
+          <span class="step-badge">01 · SHIFTING OFFSETS</span>
+          <h3>Async AI Edits Land on Stale Indices</h3>
+          <p>An LLM takes 400 to 700 ms to rewrite characters <code>210..340</code>. If an engineer types 50 characters in Section 1 during that window, applying the response at raw integer offsets overwrites the wrong paragraph.</p>
+        </div>
+        <div class="card problem-card">
+          <span class="step-badge">02 · SCRAMBLED WORDS</span>
+          <h3>Concurrent Inserts Can Interleave</h3>
+          <p>When two humans and an AI teammate insert text at the same boundary during a Wi-Fi blip, naive index merges interleave letters from separate words or diverge when network packets arrive out of order.</p>
+        </div>
+        <div class="card problem-card">
+          <span class="step-badge">03 · SNAPSHOT BLOAT</span>
+          <h3>Full JSON Re-Syncs Waste Bandwidth</h3>
+          <p>Sending a full CRDT item array in JSON for a 10 KB document transmits nearly 2 MB of metadata per keystroke burst, breaking sub-50 ms sync budgets and inflating per-builder cloud costs.</p>
+        </div>
+        <div class="card problem-card">
+          <span class="step-badge">04 · GLOBAL UNDO COLLISIONS</span>
+          <h3>Linear Undo Erases Teammates' Work</h3>
+          <p>In a multiplayer session, a global undo stack reverts whichever edit arrived last. Reverting an unhelpful AI rewrite 10 seconds later should never delete sentences a human teammate typed afterward.</p>
+        </div>
+      </div>
+
+      <div class="scenario-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+          <div>
+            <span class="step-badge">EXAMPLE · CONCURRENT RFC EDIT</span>
+            <h3 style="font-size:1.15rem; font-weight:800; margin-top:0.35rem;">Example: Co-Editing RFC-042 While Maya Types Above @nova-editor</h3>
+          </div>
+          <span class="tag tag-pass">Testable in Live Demo</span>
+        </div>
+        <div class="scenario-steps">
+          <div class="scenario-step">
+            <div class="mono" style="font-size:0.7rem; font-weight:700; color:var(--accent-main); margin-bottom:0.3rem;">1 · ANCHOR PINNED</div>
+            <code>@nova-editor</code> pins Section 2 via <code>RelativeRange(start=before, end=after)</code> at initial offsets <code>[194..313]</code> and sends the prompt to Amazon Bedrock.
+          </div>
+          <div class="scenario-step">
+            <div class="mono" style="font-size:0.7rem; font-weight:700; color:var(--warn); margin-bottom:0.3rem;">2 · UPSTREAM HUMAN TYPING</div>
+            While Bedrock responds (<code>544.0 ms</code> median), Maya inserts a <code>52</code>-character availability note in Section 1 on her own peer replica.
+          </div>
+          <div class="scenario-step">
+            <div class="mono" style="font-size:0.7rem; font-weight:700; color:var(--blue); margin-bottom:0.3rem;">3 · BINARY DELTA MERGE</div>
+            Both replicas exchange <code>CHSV</code> state vectors and <code>CHDL</code> run-length deltas. Yata resolves the shifted anchor to <code>[246..365]</code> with <code>0</code> overwritten human characters.
+          </div>
+          <div class="scenario-step">
+            <div class="mono" style="font-size:0.7rem; font-weight:700; color:var(--pass); margin-bottom:0.3rem;">4 · SELECTIVE UNDO READY</div>
+            Clicking Undo on <code>@nova-editor</code> emits inverse tombstones and restores Section 2 in <code>0.073 ms</code> while keeping Maya's <code>52</code> characters intact.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- 02 · ARCHITECTURE                                                   -->
+    <!-- =================================================================== -->
+    <section id="architecture" class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-kicker">02 · Architecture</span>
+          <h2 class="section-title">Architecture</h2>
+          <p class="section-desc">
+            Amazon CloudFront serves the static workspace from a private S3 bucket and routes <code>/api/*</code> calls to Python 3.12 on AWS Lambda. Click any component below to inspect its module, protocol invariants, and measured latency.
+          </p>
+        </div>
+      </div>
+
+      <div class="arch-canvas-toolbar">
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+          <span class="mono" style="font-size:0.72rem; font-weight:700;">SYSTEM ARCHITECTURE · CLICK ANY COMPONENT TO INSPECT</span>
+          <span class="tag tag-accent" id="archZoomLabel">Zoom: 100%</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
+          <button type="button" class="btn btn-accent" id="zoom100Btn" style="padding:0.32rem 0.65rem; font-size:0.76rem;">100%</button>
+          <button type="button" class="btn btn-secondary" id="zoom125Btn" style="padding:0.32rem 0.65rem; font-size:0.76rem;">125%</button>
+          <button type="button" class="btn btn-secondary" id="zoomResetBtn" style="padding:0.32rem 0.65rem; font-size:0.76rem;">↺ Reset</button>
+          <button type="button" class="btn btn-secondary" id="downloadArchSvgBtn" style="padding:0.32rem 0.65rem; font-size:0.76rem;">⬇ Export SVG</button>
+        </div>
+      </div>
+
+      <div class="arch-canvas-viewport" id="archViewport">
+        <svg id="chorusArchSvg" class="arch-canvas-svg" viewBox="0 0 1220 730" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ChorusCRDT System Architecture Diagram">
+          <defs>
+            <pattern id="archDotGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="2" cy="2" r="1" fill="#D4D4D8" />
+            </pattern>
+          </defs>
+
+          <rect x="0" y="0" width="1220" height="730" fill="#FFFFFF" />
+          <rect x="0" y="0" width="1220" height="730" fill="url(#archDotGrid)" opacity="0.68" />
+
+          <!-- LAYER 1: BROWSER & SERVERLESS AWS EDGE -->
+          <path d="M 22,18 Q 610,14 1196,19 Q 1201,92 1195,164 Q 608,168 24,163 Q 19,90 22,18 Z" fill="#FAFAFA" stroke="#71717A" stroke-width="1.6" stroke-dasharray="8 6" />
+          <text x="36" y="41" class="svg-title" font-size="21" font-weight="700" fill="#7C3AED">① Collaborator Browsers &amp; Serverless AWS Edge (CloudFront + Private S3 OAC + Python 3.12 Lambda)</text>
+
+          <!-- Node 1: Browser -->
+          <g class="arch-node selected" data-arch-node="edge-browser" tabindex="0">
+            <path d="M 38,55 Q 136,52 234,56 Q 238,96 233,138 Q 135,141 39,137 Q 35,95 38,55 Z" fill="#EDE9FE" />
+            <path class="arch-stroke-main" d="M 38,55 Q 136,52 234,56 Q 238,96 233,138 Q 135,141 39,137 Q 35,95 38,55 Z" fill="none" stroke="#18181B" stroke-width="2.1" />
+            <text x="136" y="83" text-anchor="middle" class="svg-title" font-size="22" font-weight="700" fill="#18181B">Collaborator UI</text>
+            <text x="136" y="105" text-anchor="middle" class="svg-mono" font-size="9.8" font-weight="600" fill="#4C1D95">Peer Cursors + 4 Live Labs</text>
+            <text x="136" y="123" text-anchor="middle" class="svg-mono" font-size="9.3" fill="#3F3F46">URL hash state · Dark mode</text>
+          </g>
+
+          <path d="M 237,96 Q 268,92 298,96" fill="none" stroke="#18181B" stroke-width="2.1" stroke-dasharray="6 4" />
+          <path d="M 289,90 L 300,96 L 289,102" fill="none" stroke="#18181B" stroke-width="2.1" />
+          <text x="268" y="86" text-anchor="middle" class="svg-title" font-size="16" font-weight="700" fill="#18181B">HTTPS</text>
+
+          <!-- Node 2: CloudFront -->
+          <g class="arch-node" data-arch-node="edge-cloudfront" tabindex="0">
+            <path d="M 304,55 Q 430,51 556,56 Q 560,96 555,138 Q 428,142 305,137 Q 301,95 304,55 Z" fill="#F3E8FF" />
+            <path class="arch-stroke-main" d="M 304,55 Q 430,51 556,56 Q 560,96 555,138 Q 428,142 305,137 Q 301,95 304,55 Z" fill="none" stroke="#18181B" stroke-width="2.1" />
+            <text x="430" y="83" text-anchor="middle" class="svg-title" font-size="22" font-weight="700" fill="#18181B">Amazon CloudFront</text>
+            <text x="430" y="105" text-anchor="middle" class="svg-mono" font-size="9.8" font-weight="600" fill="#6D28D9">Unified HTTPS Entry Point</text>
+            <text x="430" y="123" text-anchor="middle" class="svg-mono" font-size="9.3" fill="#3F3F46">/* -&gt; S3 OAC · /api/* -&gt; Lambda</text>
+          </g>
+
+          <path d="M 559,78 Q 596,66 634,66" fill="none" stroke="#18181B" stroke-width="2" stroke-dasharray="6 4" />
+          <path d="M 625,60 L 636,66 L 625,72" fill="none" stroke="#18181B" stroke-width="2" />
+          <text x="596" y="59" text-anchor="middle" class="svg-title" font-size="15" font-weight="700" fill="#065F46">Static UI</text>
+
+          <path d="M 559,114 Q 596,126 634,126" fill="none" stroke="#18181B" stroke-width="2" stroke-dasharray="6 4" />
+          <path d="M 625,120 L 636,126 L 625,132" fill="none" stroke="#18181B" stroke-width="2" />
+          <text x="596" y="143" text-anchor="middle" class="svg-title" font-size="15" font-weight="700" fill="#7C3AED">/api/*</text>
+
+          <!-- Node 3: Private S3 -->
+          <g class="arch-node" data-arch-node="edge-s3" tabindex="0">
+            <path d="M 640,39 Q 775,36 910,40 Q 913,65 909,90 Q 774,93 641,89 Q 637,64 640,39 Z" fill="#DCFCE7" />
+            <path class="arch-stroke-main" d="M 640,39 Q 775,36 910,40 Q 913,65 909,90 Q 774,93 641,89 Q 637,64 640,39 Z" fill="none" stroke="#18181B" stroke-width="2" />
+            <text x="775" y="61" text-anchor="middle" class="svg-title" font-size="20" font-weight="700" fill="#18181B">Private S3 Bucket (OAC)</text>
+            <text x="775" y="79" text-anchor="middle" class="svg-mono" font-size="9.3" fill="#065F46">web/index.html · Public Access Off</text>
+          </g>
+
+          <!-- Node 4: Lambda /api/* -->
+          <g class="arch-node" data-arch-node="edge-lambda" tabindex="0">
+            <path d="M 640,100 Q 775,97 910,101 Q 913,127 909,153 Q 774,156 641,152 Q 637,126 640,100 Z" fill="#FEF3C7" />
+            <path class="arch-stroke-main" d="M 640,100 Q 775,97 910,101 Q 913,127 909,153 Q 774,156 641,152 Q 637,126 640,100 Z" fill="none" stroke="#18181B" stroke-width="2" />
+            <text x="775" y="123" text-anchor="middle" class="svg-title" font-size="20" font-weight="700" fill="#18181B">AWS Lambda API (Python 3.12)</text>
+            <text x="775" y="142" text-anchor="middle" class="svg-mono" font-size="9.3" fill="#92400E">chorus_crdt/server.py · 512 MB</text>
+          </g>
+
+          <!-- Callout Note -->
+          <g transform="rotate(-1.4 1055 95)">
+            <path d="M 936,40 L 1178,40 L 1178,134 L 1160,150 L 936,150 Z" fill="#EDE9FE" stroke="#18181B" stroke-width="2" />
+            <path d="M 1160,150 L 1160,134 L 1178,134" fill="#DDD6FE" stroke="#18181B" stroke-width="1.6" />
+            <text x="950" y="66" class="svg-title" font-size="19" font-weight="700" fill="#5B21B6">📌 $0.00 Idle Architecture</text>
+            <text x="950" y="89" class="svg-title" font-size="17" font-weight="600" fill="#18181B">• 150 B median binary sync</text>
+            <text x="950" y="110" class="svg-title" font-size="17" font-weight="600" fill="#18181B">• 32.07 us per-char CRDT insert</text>
+            <text x="950" y="131" class="svg-title" font-size="17" font-weight="700" fill="#7C3AED">• ~$0.72 / builder / yr target</text>
+          </g>
+
+          <path d="M 775,154 Q 770,176 612,194" fill="none" stroke="#18181B" stroke-width="2.1" stroke-dasharray="7 5" />
+          <path d="M 621,188 L 610,195 L 622,200" fill="none" stroke="#18181B" stroke-width="2.1" />
+          <text x="755" y="183" class="svg-title" font-size="16" font-weight="700" fill="#18181B">Route CRDT Ops &amp; Anchor Queries</text>
+
+          <!-- LAYER 2: SCRATCH YATA CRDT & RELATIVE ANCHORS -->
+          <path d="M 22,196 Q 610,192 1196,197 Q 1200,268 1195,338 Q 608,342 24,337 Q 19,266 22,196 Z" fill="#FAF5FF" stroke="#7C3AED" stroke-width="1.6" stroke-dasharray="8 6" />
+          <text x="36" y="219" class="svg-title" font-size="21" font-weight="700" fill="#7C3AED">② Scratch Yata Sequence CRDT, Relative Cursor Anchors &amp; Causal Buffers (320 / 320 Fuzz Seeds Converged)</text>
+
+          <!-- CRDT Core Node -->
+          <g class="arch-node" data-arch-node="crdt-yata" tabindex="0">
+            <path d="M 42,233 Q 218,229 394,234 Q 398,279 393,324 Q 216,328 43,323 Q 39,278 42,233 Z" fill="#EDE9FE" />
+            <path class="arch-stroke-main" d="M 42,233 Q 218,229 394,234 Q 398,279 393,324 Q 216,328 43,323 Q 39,278 42,233 Z" fill="none" stroke="#18181B" stroke-width="2.1" />
+            <text x="218" y="261" text-anchor="middle" class="svg-title" font-size="22" font-weight="700" fill="#4C1D95">Yata Sequence Integrator</text>
+            <text x="218" y="283" text-anchor="middle" class="svg-mono" font-size="9.6" font-weight="700" fill="#18181B">id=(actor, clock) · origin_left / right</text>
+            <text x="218" y="303" text-anchor="middle" class="svg-mono" font-size="9.2" fill="#3F3F46">Non-crossing origins · 0 scrambled words</text>
+          </g>
+
+          <!-- Relative Anchor Node -->
+          <g class="arch-node" data-arch-node="crdt-anchors" tabindex="0">
+            <path d="M 432,233 Q 610,229 788,234 Q 792,279 787,324 Q 609,328 433,323 Q 429,278 432,233 Z" fill="#DBEAFE" />
+            <path class="arch-stroke-main" d="M 432,233 Q 610,229 788,234 Q 792,279 787,324 Q 609,328 433,323 Q 429,278 432,233 Z" fill="none" stroke="#18181B" stroke-width="2.1" />
+            <text x="610" y="261" text-anchor="middle" class="svg-title" font-size="22" font-weight="700" fill="#18181B">RelativeAnchor Resolver</text>
+            <text x="610" y="283" text-anchor="middle" class="svg-mono" font-size="9.6" font-weight="600" fill="#1E3A8A">RelativeAnchor(item_id, before|after)</text>
+            <text x="610" y="303" text-anchor="middle" class="svg-mono" font-size="9.2" fill="#3F3F46">Pins AI &amp; human cursors across upstream edits</text>
+          </g>
+
+          <!-- Out-of-Order Causal Buffer Node -->
+          <g class="arch-node" data-arch-node="crdt-fuzzer" tabindex="0">
+            <path d="M 824,233 Q 1001,229 1178,234 Q 1182,279 1177,324 Q 1000,328 825,323 Q 821,278 824,233 Z" fill="#FEF3C7" />
+            <path class="arch-stroke-main" d="M 824,233 Q 1001,229 1178,234 Q 1182,279 1177,324 Q 1000,328 825,323 Q 821,278 824,233 Z" fill="none" stroke="#18181B" stroke-width="2.1" />
+            <text x="1001" y="261" text-anchor="middle" class="svg-title" font-size="22" font-weight="700" fill="#92400E">Causal Buffer &amp; Chaos Fuzzer</text>
+            <text x="1001" y="283" text-anchor="middle" class="svg-mono" font-size="9.6" font-weight="700" fill="#18181B">Pending Queue + LWW delete_version</text>
+            <text x="1001" y="303" text-anchor="middle" class="svg-mono" font-size="9.2" fill="#78350F">198,517 reordered + 20,317 dup ops converged</text>
+          </g>
+
+          <!-- Arrows Layer 2 -> Layer 3 -->
+          <path d="M 410,326 Q 360,355 315,380" fill="none" stroke="#18181B" stroke-width="2" stroke-dasharray="6 4" />
+          <path d="M 323,371 L 313,381 L 326,382" fill="none" stroke="#18181B" stroke-width="2" />
+          <text x="242" y="362" class="svg-title" font-size="16" font-weight="700" fill="#065F46">Pack Missing Ops via StateVector</text>
+
+          <path d="M 860,326 Q 885,355 905,380" fill="none" stroke="#18181B" stroke-width="2" stroke-dasharray="6 4" />
+          <path d="M 896,377 L 907,381 L 905,369" fill="none" stroke="#18181B" stroke-width="2" />
+          <text x="920" y="362" class="svg-title" font-size="16" font-weight="700" fill="#7C3AED">Invert Actor Transaction</text>
+
+          <!-- LAYER 3: BINARY WIRE PROTOCOL & SELECTIVE UNDO -->
+          <path d="M 22,380 Q 610,376 1196,381 Q 1200,452 1195,522 Q 608,526 24,521 Q 19,450 22,380 Z" fill="#F0FDF4" stroke="#065F46" stroke-width="1.6" stroke-dasharray="8 6" />
+          <text x="36" y="404" class="svg-title" font-size="21" font-weight="700" fill="#065F46">③ Compact Binary StateVector Sync (CHSV / CHDL) &amp; Selective Per-Author Undo</text>
+
+          <!-- Wire Sync Node -->
+          <g class="arch-node" data-arch-node="wire-delta" tabindex="0">
+            <path d="M 42,418 Q 312,414 582,419 Q 586,464 581,508 Q 310,512 43,507 Q 39,462 42,418 Z" fill="#DCFCE7" />
+            <path class="arch-stroke-main" d="M 42,418 Q 312,414 582,419 Q 586,464 581,508 Q 310,512 43,507 Q 39,462 42,418 Z" fill="none" stroke="#18181B" stroke-width="2.1" />
+            <text x="312" y="446" text-anchor="middle" class="svg-title" font-size="22" font-weight="700" fill="#18181B">Varint StateVector &amp; RLE Binary Delta</text>
+            <text x="312" y="468" text-anchor="middle" class="svg-mono" font-size="9.6" font-weight="700" fill="#065F46">18 B CHSV Header + RLE CHDL Runs</text>
+            <text x="312" y="489" text-anchor="middle" class="svg-mono" font-size="9.2" fill="#3F3F46">150.0 B median wire · 99.98% smaller than CRDT JSON</text>
+          </g>
+
+          <!-- Selective Undo Node -->
+          <g class="arch-node" data-arch-node="causal-undo" tabindex="0">
+            <path d="M 624,418 Q 901,414 1178,419 Q 1182,464 1177,508 Q 900,512 625,507 Q 621,462 624,418 Z" fill="#FFE4E6" />
+            <path class="arch-stroke-main" d="M 624,418 Q 901,414 1178,419 Q 1182,464 1177,508 Q 900,512 625,507 Q 621,462 624,418 Z" fill="none" stroke="#18181B" stroke-width="2.1" />
+            <text x="901" y="446" text-anchor="middle" class="svg-title" font-size="22" font-weight="700" fill="#18181B">Selective Per-Author Undo Engine</text>
+            <text x="901" y="468" text-anchor="middle" class="svg-mono" font-size="9.6" font-weight="700" fill="#9F1239">Inverse Tombstone + Restore Mutations</text>
+            <text x="901" y="489" text-anchor="middle" class="svg-mono" font-size="9.2" fill="#3F3F46">12 / 12 scenarios exact (0.073 ms) · 0 collateral loss</text>
+          </g>
+
+          <!-- Arrows Layer 3 -> Layer 4 -->
+          <path d="M 312,510 Q 312,542 312,568" fill="none" stroke="#7C3AED" stroke-width="2.1" stroke-dasharray="6 4" />
+          <path d="M 306,560 L 312,570 L 318,560" fill="none" stroke="#7C3AED" stroke-width="2.1" />
+          <text x="326" y="548" class="svg-title" font-size="16" font-weight="700" fill="#7C3AED">Anchored Section Rewrite</text>
+
+          <path d="M 901,510 Q 901,542 901,568" fill="none" stroke="#065F46" stroke-width="2.1" stroke-dasharray="6 4" />
+          <path d="M 895,560 L 901,570 L 907,560" fill="none" stroke="#065F46" stroke-width="2.1" />
+          <text x="915" y="548" class="svg-title" font-size="16" font-weight="700" fill="#065F46">Append WAL &amp; Compact Checkpoint</text>
+
+          <!-- LAYER 4: BEDROCK PEER & SQLITE WAL COMPACTOR -->
+          <g class="arch-node" data-arch-node="bedrock-peer" tabindex="0">
+            <path d="M 42,574 Q 312,569 582,575 Q 586,642 581,708 Q 310,713 43,707 Q 39,640 42,574 Z" fill="#F3E8FF" />
+            <path class="arch-stroke-main" d="M 42,574 Q 312,569 582,575 Q 586,642 581,708 Q 310,713 43,707 Q 39,640 42,574 Z" fill="none" stroke="#18181B" stroke-width="2.2" />
+            <text x="312" y="604" text-anchor="middle" class="svg-title" font-size="23" font-weight="700" fill="#5B21B6">④ Amazon Bedrock Co-Authoring Peer</text>
+            <text x="312" y="629" text-anchor="middle" class="svg-mono" font-size="10" font-weight="700" fill="#18181B">Amazon Nova Lite · us.amazon.nova-lite-v1:0</text>
+            <text x="312" y="651" text-anchor="middle" class="svg-mono" font-size="9.3" fill="#4C1D95">Forks replica, edits RelativeRange &amp; syncs binary delta</text>
+            <rect x="92" y="666" width="440" height="28" fill="#FFFFFF" stroke="#18181B" stroke-width="1.6" />
+            <text x="312" y="684" text-anchor="middle" class="svg-mono" font-size="9.5" font-weight="700" fill="#7C3AED">⚡ 12 / 12 Live Co-Edits Passed · 544.0 ms Median</text>
+          </g>
+
+          <path d="M 585,642 L 620,642" fill="none" stroke="#18181B" stroke-width="2" stroke-dasharray="5 4" />
+          <path d="M 613,636 L 622,642 L 613,648" fill="none" stroke="#18181B" stroke-width="2" />
+
+          <g class="arch-node" data-arch-node="sqlite-wal" tabindex="0">
+            <path d="M 624,574 Q 901,569 1178,575 Q 1182,642 1177,708 Q 900,713 625,707 Q 621,640 624,574 Z" fill="#FEF3C7" />
+            <path class="arch-stroke-main" d="M 624,574 Q 901,569 1178,575 Q 1182,642 1177,708 Q 900,713 625,707 Q 621,640 624,574 Z" fill="none" stroke="#18181B" stroke-width="2.2" />
+            <text x="901" y="604" text-anchor="middle" class="svg-title" font-size="23" font-weight="700" fill="#92400E">④ SQLite WAL Op-Log &amp; Compactor</text>
+            <text x="901" y="629" text-anchor="middle" class="svg-mono" font-size="10" font-weight="700" fill="#18181B">chorus_oplog.db · Binary Checkpoint Fold</text>
+            <text x="901" y="651" text-anchor="middle" class="svg-mono" font-size="9.3" fill="#78350F">Folds incremental WAL frames into RLE checkpoints</text>
+            <rect x="681" y="666" width="440" height="28" fill="#DCFCE7" stroke="#18181B" stroke-width="1.6" />
+            <text x="901" y="684" text-anchor="middle" class="svg-mono" font-size="9.5" font-weight="700" fill="#065F46">✓ 2.291 ms Median Compaction · Lossless Hydration</text>
+          </g>
+        </svg>
+      </div>
+
+      <!-- Interactive Component Inspector -->
+      <div class="arch-inspector" id="archInspector">
+        <div class="arch-node-pills" id="archNodePills">
+          <button type="button" class="arch-node-pill active" data-arch-btn="edge-browser">1. Collaborator UI</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="edge-cloudfront">2. CloudFront</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="edge-s3">3. Private S3</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="edge-lambda">4. Lambda API</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="crdt-yata">5. Yata Engine</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="crdt-anchors">6. Relative Anchors</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="crdt-fuzzer">7. Causal Buffer &amp; Fuzzer</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="wire-delta">8. Binary Wire Sync</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="causal-undo">9. Per-Author Undo</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="bedrock-peer">10. Bedrock Peer</button>
+          <button type="button" class="arch-node-pill" data-arch-btn="sqlite-wal">11. SQLite Compactor</button>
+        </div>
+        <div id="archInspectorDetail"></div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- 03 · IMPLEMENTATION                                                 -->
+    <!-- =================================================================== -->
+    <section id="implementation" class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-kicker">03 · Implementation</span>
+          <h2 class="section-title">Implementation</h2>
+          <p class="section-desc">
+            Four focused Python 3.12 modules implement the Yata sequence CRDT, LEB128 varint wire encoding and SQLite compaction, randomized partition fuzzing, and live Amazon Bedrock co-authoring.
+          </p>
+        </div>
+        <span class="tag tag-pass">13 / 13 Unit Tests Passing</span>
+      </div>
+
+      <div class="module-grid">
+        <!-- Module 1 -->
+        <div class="module-card">
+          <div class="module-card-head">
+            <span>01 · YATA SEQUENCE CRDT &amp; LOGICAL ANCHORS</span>
+            <span style="color:#DDD6FE;">chorus_crdt/yata_engine.py</span>
+          </div>
+          <div class="module-card-body">
+            <div class="prose-block">
+              Every inserted character receives an immutable <code>(actor_id, lamport_clock)</code> address and stores the exact neighbors to its left and right when typed. Cursors and AI selections pin to those item IDs rather than integer positions so upstream edits never misalign an active rewrite.
+            </div>
+            <div class="prose-block-tech">
+              <code>YataDocument._integrate_ready_insert()</code> enforces Yata's non-crossing origin rule with a fast <code>O(1)</code> adjacent-origin check (<code>32.07 us</code> per-character insert, <code>1.884 ms</code> <code>p50</code> remote span merge). Out-of-order network arrivals wait in <code>_pending_inserts</code> and <code>_pending_mutations</code> until causal origins arrive, while <code>delete_version=(lamport, actor, deleted)</code> guarantees commutative tombstone convergence.
+            </div>
+          </div>
+        </div>
+
+        <!-- Module 2 -->
+        <div class="module-card">
+          <div class="module-card-head">
+            <span>02 · BINARY STATEVECTOR DELTA &amp; SQLITE COMPACTION</span>
+            <span style="color:#6EE7B7;">chorus_crdt/wire_sync.py</span>
+          </div>
+          <div class="module-card-body">
+            <div class="prose-block">
+              Instead of sending full JSON document copies on every edit or reconnect, peers advertise how many operations they have seen per author in an <code>18 B</code> binary header and receive only the missing edits packed into run-length runs.
+            </div>
+            <div class="prose-block-tech">
+              <code>encode_state_vector()</code> emits <code>CHSV\x01</code> LEB128 varint maps, and <code>encode_binary_delta()</code> deduplicates actor and transaction IDs into a header string table before packing contiguous keystrokes into single <code>OP_TAG_INSERT_RUN</code> frames (<code>150.0 B</code> median wire exchange, <code>99.98%</code> smaller than full CRDT JSON). <code>SQLiteCRDTStore</code> folds WAL frames into compacted binary checkpoints in <code>2.291 ms</code> (<code>p50</code>).
+            </div>
+          </div>
+        </div>
+
+        <!-- Module 3 -->
+        <div class="module-card">
+          <div class="module-card-head">
+            <span>03 · MULTI-PEER PARTITION &amp; CHAOS FUZZER</span>
+            <span style="color:#FDE68A;">chorus_crdt/fuzzer.py</span>
+          </div>
+          <div class="module-card-body">
+            <div class="prose-block">
+              Distributed sequence CRDTs must converge not only on happy-path keystrokes, but also when collaborators split across offline Wi-Fi partitions, packets arrive backwards, duplicates replay, or dropped frames heal via delta sync.
+            </div>
+            <div class="prose-block-tech">
+              <code>run_convergence_fuzz_suite()</code> executes <code>320</code> deterministic randomized seeds across <code>4</code> human and AI replicas (<code>peer-maya</code>, <code>peer-alex</code>, <code>bedrock-nova</code>, <code>peer-sam</code>), replaying <code>198,517</code> reordered packets, <code>20,317</code> duplicates, and <code>13,828</code> dropped packets healed via <code>sync_peers_binary()</code> with <code>320 / 320</code> (<code>100.0%</code>) convergence and <code>0</code> interleaved word corruptions.
+            </div>
+          </div>
+        </div>
+
+        <!-- Module 4 -->
+        <div class="module-card">
+          <div class="module-card-head">
+            <span>04 · LIVE BEDROCK PEER &amp; SELECTIVE CAUSAL UNDO</span>
+            <span style="color:#93C5FD;">chorus_crdt/ai_collaborator.py · server.py</span>
+          </div>
+          <div class="module-card-body">
+            <div class="prose-block">
+              <code>@nova-editor</code> joins the document as a named peer with its own replica, rewrites anchored sections via Amazon Bedrock while humans type concurrently, and records transaction item lists so any author's edit can be reverted independently.
+            </div>
+            <div class="prose-block-tech">
+              <code>coedit_document()</code> forks concurrent replicas for <code>peer-maya</code> and <code>bedrock-nova</code>, calls <code>us.amazon.nova-lite-v1:0</code> via the Bedrock Converse API (<code>544.0 ms</code> <code>p50</code> across <code>12</code> runs), reconciles binary deltas, and powers <code>undo_actor()</code> to emit inverse tombstones and restores in <code>0.073 ms</code> (<code>p50</code>) with <code>0</code> collateral characters lost.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- 04 · TRADE-OFFS                                                     -->
+    <!-- =================================================================== -->
+    <section id="tradeoffs" class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-kicker">04 · Trade-Offs</span>
+          <h2 class="section-title">Trade-Offs</h2>
+          <p class="section-desc">
+            Every design choice in ChorusCRDT balances per-character metadata overhead, causal undo fidelity, and serverless unit economics.
+          </p>
+        </div>
+        <span class="tag tag-soft">Design Decisions</span>
+      </div>
+
+      <div class="module-grid" style="margin-bottom:0;">
+        <div class="card">
+          <span class="step-badge">01 · CHARACTER ITEMS + WIRE RLE</span>
+          <h3 style="font-size:1.08rem; font-weight:800; margin:0.45rem 0;">In-Memory Item Granularity vs. Run-Length Wire Packing</h3>
+          <p style="font-size:0.92rem; color:var(--ink-muted); line-height:1.68;">
+            Addressing individual characters in memory makes <code>RelativeAnchor</code> cursor pinning and non-interleaving conflict resolution exact at any character boundary, at the cost of higher Python object overhead than flat strings. Packing sequential runs into <code>OP_TAG_INSERT_RUN</code> records in <code>wire_sync.py</code> keeps network deltas at <code>150.0 B</code> median and SQLite checkpoints within <code>1.02x</code> of raw UTF-8 text size.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="step-badge">02 · RETAINED TOMBSTONES</span>
+          <h3 style="font-size:1.08rem; font-weight:800; margin:0.45rem 0;">Keeping Tombstones for Offline Peers &amp; Selective Undo</h3>
+          <p style="font-size:0.92rem; color:var(--ink-muted); line-height:1.68;">
+            Deleted characters stay in the sequence marked <code>deleted=True</code> rather than being immediately spliced out. Retaining tombstones adds small metadata to checkpoints, in exchange allowing offline collaborators whose <code>origin_left</code> references a deleted item to merge without orphans and letting <code>undo_actor()</code> restore replaced sentences cleanly.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="step-badge">03 · REQUEST-RESPONSE VS WEBSOCKETS</span>
+          <h3 style="font-size:1.08rem; font-weight:800; margin:0.45rem 0;">Serverless $0.00 Idle Lambda vs. Persistent Fan-Out</h3>
+          <p style="font-size:0.92rem; color:var(--ink-muted); line-height:1.68;">
+            Deploying <code>/api/*</code> on on-demand AWS Lambda behind CloudFront keeps idle cost at <code>$0.00/month</code> while running the exact binary <code>CHSV</code>/<code>CHDL</code> protocol and live Amazon Bedrock calls. Scaling to hundreds of simultaneous sub-50 ms cursors on one hot doc pairs the same binary codec with WebSocket fan-out rooms backed by S3 checkpoint flushing.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="step-badge">04 · SCOPED SECTION REWRITES</span>
+          <h3 style="font-size:1.08rem; font-weight:800; margin:0.45rem 0;">Anchored Span Edits Instead of Whole-Document LLM Rewrites</h3>
+          <p style="font-size:0.92rem; color:var(--ink-muted); line-height:1.68;">
+            Having Amazon Bedrock regenerate an entire 10 KB document takes seconds, burns thousands of tokens, and risks hallucinated edits in unrelated sections. Scoping <code>@nova-editor</code> to a pinned <code>RelativeRange</code> keeps median Bedrock latency at <code>544.0 ms</code> (<code>203.6</code> mean tokens) and confines tombstones strictly to the selected span.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- 05 · LIVE DEMO                                                      -->
+    <!-- =================================================================== -->
+    <section id="studio" class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-kicker">05 · Live Demo</span>
+          <h2 class="section-title">Live Demo</h2>
+          <p class="section-desc">
+            All four interactive labs run against the live Python 3.12 CRDT engine and Amazon Bedrock (<code>us.amazon.nova-lite-v1:0</code>) over <code>/api/*</code>.
+          </p>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+          <span class="tag tag-accent">Live AWS /api/* Backend</span>
+          <button type="button" class="btn btn-secondary" onclick="resetWorkspace()" style="padding:0.32rem 0.7rem; font-size:0.76rem;">↺ Reset All Docs</button>
+        </div>
+      </div>
+
+      <div class="tab-bar" role="tablist" aria-label="ChorusCRDT Interactive Demo Tabs">
+        <button type="button" class="tab-btn active" data-tab="coeditor" role="tab" aria-selected="true" onclick="switchTab('coeditor')">
+          <span class="tab-btn-eyebrow">Tab 01 · Live Bedrock Peer</span>
+          <span class="tab-btn-title">1. Multiplayer Human + AI Co-Editor</span>
+          <span class="tab-btn-desc">Type concurrently above an anchored section while @nova-editor rewrites it on Amazon Bedrock</span>
+          <span class="tab-btn-metric" id="tabMetric1"></span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="partition-sim" role="tab" aria-selected="false" onclick="switchTab('partition-sim')">
+          <span class="tab-btn-eyebrow">Tab 02 · Chaos &amp; Convergence</span>
+          <span class="tab-btn-title">2. Network Partition &amp; Convergence Simulator</span>
+          <span class="tab-btn-desc">Split 3 replicas offline, shuffle and duplicate packets, and run multi-seed convergence fuzzing</span>
+          <span class="tab-btn-metric" id="tabMetric2"></span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="wire-inspector" role="tab" aria-selected="false" onclick="switchTab('wire-inspector')">
+          <span class="tab-btn-eyebrow">Tab 03 · CHSV / CHDL Codec</span>
+          <span class="tab-btn-title">3. Binary StateVector Delta Inspector</span>
+          <span class="tab-btn-desc">Inspect varint StateVector hex frames, RLE binary deltas, and SQLite WAL checkpoint compaction</span>
+          <span class="tab-btn-metric" id="tabMetric3"></span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="undo-lab" role="tab" aria-selected="false" onclick="switchTab('undo-lab')">
+          <span class="tab-btn-eyebrow">Tab 04 · Causal Inversion</span>
+          <span class="tab-btn-title">4. Selective Per-Author Undo Lab</span>
+          <span class="tab-btn-desc">Stage interleaved Maya + @nova-editor + Alex edits and revert any single collaborator cleanly</span>
+          <span class="tab-btn-metric" id="tabMetric4"></span>
+        </button>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- TAB 1: MULTIPLAYER HUMAN + AI CO-EDITOR                           -->
+      <!-- ================================================================= -->
+      <div class="tab-panel active" id="panel-coeditor" role="tabpanel">
+        <div class="sim-header">
+          <div>
+            <h3 class="sim-title">1. Multiplayer Human + AI Co-Editor</h3>
+            <p class="sim-desc">
+              Pin a <code>RelativeRange</code> on any RFC section, type a concurrent human note above or below that anchor, and run live Amazon Bedrock (<code>us.amazon.nova-lite-v1:0</code>) simultaneously. Watch the anchor shift cleanly with zero lost human characters.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div style="margin-bottom:0.85rem;">
+              <label class="control-label" for="coeditDocSelect">
+                <span>Active Collaborative Document</span>
+                <span class="tag tag-soft">3 Preset Docs</span>
+              </label>
+              <select id="coeditDocSelect" onchange="onDocSelectionChange()">
+                <option value="doc-rfc-sync">RFC-042: Sub-50ms Multiplayer CRDT Sync</option>
+                <option value="doc-incident-review">COE-118: WebSocket Reconnect Delta Storm</option>
+                <option value="doc-undo-spec">Spec: Selective Per-Author Undo for AI Teammates</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom:0.85rem;">
+              <label class="control-label" for="coeditSectionSelect">
+                <span>Pinned RelativeRange Section for @nova-editor</span>
+                <span class="mono" style="font-size:0.68rem; color:var(--accent-main);" id="pinnedRangeBadge">item_id anchor</span>
+              </label>
+              <select id="coeditSectionSelect"></select>
+            </div>
+
+            <div style="margin-bottom:0.85rem;">
+              <label class="control-label" for="coeditModeSelect">
+                <span>@nova-editor Collaboration Mode (Amazon Bedrock)</span>
+                <span class="tag tag-accent">us.amazon.nova-lite-v1:0</span>
+              </label>
+              <select id="coeditModeSelect">
+                <option value="tighten_metrics">Tighten Spec &amp; Concrete Latency / Byte Metrics</option>
+                <option value="security_review">Add Tenant Isolation &amp; Replay-Protection Guardrail</option>
+                <option value="cost_breakdown">Add Serverless Compaction &amp; Per-Builder Cost Math</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom:0.85rem;">
+              <label class="control-label" for="coeditHumanText">
+                <span>Concurrent Keystrokes by @maya-eng (Typed While Bedrock Thinks)</span>
+                <select id="coeditHumanPos" style="width:auto; padding:0.2rem 0.45rem; font-size:0.68rem;">
+                  <option value="above_anchor">Insert ABOVE AI Anchor (Shifts Offsets!)</option>
+                  <option value="below_anchor">Insert BELOW AI Anchor</option>
+                </select>
+              </label>
+              <textarea id="coeditHumanText" rows="2">[Maya live note: Verified 0 packet loss across 4 Availability Zones.]
+</textarea>
+            </div>
+
+            <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+              <button type="button" class="btn btn-accent" id="btnRunCoedit" onclick="runLiveCoedit()">⚡ Co-Edit Concurrently (Maya + Live Bedrock)</button>
+              <button type="button" class="btn btn-secondary" id="btnQuickUndoAi" onclick="quickUndoAiInTab1()">↶ Undo @nova-editor Only</button>
+            </div>
+
+            <div style="margin-top:1rem;" id="coeditAnchorProofBox"></div>
+          </div>
+
+          <div>
+            <div class="presence-bar">
+              <div style="display:flex; gap:0.45rem; flex-wrap:wrap; align-items:center;">
+                <span style="font-weight:700; opacity:0.85;">LIVE PRESENCE:</span>
+                <span class="peer-chip"><span class="peer-dot-maya"></span>@maya-eng (Human)</span>
+                <span class="peer-chip"><span class="peer-dot-nova"></span>@nova-editor (Bedrock AI Peer)</span>
+                <span class="peer-chip"><span class="peer-dot-alex"></span>@alex-sre (Human)</span>
+              </div>
+              <span id="coeditWirePill" class="tag tag-pass">Converged</span>
+            </div>
+            <div class="doc-surface" id="coeditDocSurface"></div>
+
+            <div style="margin-top:0.95rem;">
+              <div class="code-header">
+                <span>LIVE CRDT TRANSACTION &amp; BEDROCK TELEMETRY</span>
+                <span id="coeditEngineBadge" class="tag tag-soft">Ready</span>
+              </div>
+              <div class="code-box" id="coeditTelemetryBox">Click "Co-Edit Concurrently" to fork two peer replicas, apply Maya's upstream keystrokes while Amazon Bedrock rewrites the anchored span, and merge both via CHSV / CHDL binary deltas.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- TAB 2: NETWORK PARTITION & CONVERGENCE SIMULATOR                  -->
+      <!-- ================================================================= -->
+      <div class="tab-panel" id="panel-partition-sim" role="tabpanel">
+        <div class="sim-header">
+          <div>
+            <h3 class="sim-title">2. Network Partition &amp; Convergence Simulator</h3>
+            <p class="sim-desc">
+              Disconnect three active peers across a split-brain network partition, replay operations out of order with duplicate packets, reconcile via binary <code>StateVector</code> deltas, and run a live batch of randomized 4-peer chaos fuzz seeds.
+            </p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:1.15rem;">
+          <div class="grid-3" style="align-items:end;">
+            <div>
+              <label class="control-label" for="fuzzScenarioSelect"><span>Partition Topology</span></label>
+              <select id="fuzzScenarioSelect">
+                <option value="split_brain_rfc">Split-Brain Partition: (Maya + Nova) vs Offline Alex</option>
+                <option value="same_offset_collision">3-Way Same-Offset Collision at Identical Cursor Index</option>
+                <option value="out_of_order_burst">Reversed Out-of-Order Packet Burst + Duplicate Replay</option>
+              </select>
+            </div>
+            <div>
+              <label class="control-label" for="fuzzSeedInput"><span>Deterministic Base Seed &amp; Batch Size</span></label>
+              <div style="display:flex; gap:0.5rem;">
+                <input type="number" id="fuzzSeedInput" value="10599520" />
+                <select id="fuzzCountSelect" style="max-width:140px;">
+                  <option value="60">60 Seeds</option>
+                  <option value="120">120 Seeds</option>
+                  <option value="320">320 Seeds</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex; gap:0.55rem;">
+              <button type="button" class="btn btn-accent" id="btnRunFuzz" onclick="runLivePartitionFuzz()" style="width:100%; justify-content:center;">▶ Run Partition Heal + Fuzz Batch</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="fuzzVerdictBanner" class="verdict-banner verdict-allow">
+          <div>
+            <strong>✓ 320 / 320 BENCHMARK SEEDS CONVERGED (100.0%) · 0 INTERLEAVED WORD CORRUPTIONS</strong><br />
+            <span style="font-size:0.82rem;">Click <em>Run Partition Heal + Fuzz Batch</em> above to execute a live chaos simulation on AWS Lambda.</span>
+          </div>
+          <span class="tag tag-pass">STRONG EVENTUAL CONSISTENCY</span>
+        </div>
+
+        <div class="grid-3" id="partitionBeforePanes" style="margin-bottom:1.15rem;"></div>
+
+        <div class="grid-equal">
+          <div>
+            <div class="code-header">
+              <span>UNIFIED CONVERGED DOCUMENT (MAYA == ALEX == NOVA)</span>
+              <span class="tag tag-pass" id="partitionWireTag">0 Divergence</span>
+            </div>
+            <div class="doc-surface" id="partitionConvergedBox" style="max-height:260px;"></div>
+          </div>
+          <div>
+            <div class="code-header">
+              <span>CHAOS FUZZER METRICS (REORDERED / DUPLICATES / DROPPED)</span>
+              <span class="tag tag-accent" id="fuzzBatchMsTag">Measured</span>
+            </div>
+            <div class="code-box" id="partitionFuzzJsonBox" style="max-height:260px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- TAB 3: BINARY STATEVECTOR DELTA INSPECTOR                         -->
+      <!-- ================================================================= -->
+      <div class="tab-panel" id="panel-wire-inspector" role="tabpanel">
+        <div class="sim-header">
+          <div>
+            <h3 class="sim-title">3. Binary StateVector Delta Inspector</h3>
+            <p class="sim-desc">
+              Compare a compact <code>CHSV\x01</code> varint state vector and <code>CHDL\x01</code> run-length binary delta against full CRDT JSON snapshots, and trigger SQLite WAL checkpoint compaction with lossless hydration verification.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div style="margin-bottom:0.85rem;">
+              <label class="control-label" for="wireDocSelect"><span>Target Document</span></label>
+              <select id="wireDocSelect">
+                <option value="doc-rfc-sync">RFC-042: Sub-50ms Multiplayer CRDT Sync</option>
+                <option value="doc-incident-review">COE-118: WebSocket Reconnect Delta Storm</option>
+                <option value="doc-undo-spec">Spec: Selective Per-Author Undo for AI Teammates</option>
+              </select>
+            </div>
+            <div style="margin-bottom:0.85rem;">
+              <label class="control-label" for="wireEditInput">
+                <span>Incremental Edit Sent to Lagging Mobile Peer</span>
+                <span class="tag tag-soft">RLE Run-Packed</span>
+              </label>
+              <textarea id="wireEditInput" rows="3">
+## 4. Operational Readiness
+CloudWatch alarms trigger if p99 CRDT fan-out exceeds 45 ms across active rooms.</textarea>
+            </div>
+            <button type="button" class="btn btn-accent" id="btnRunWire" onclick="runWireDeltaInspector()">⚡ Encode Binary Delta + Compact SQLite WAL</button>
+
+            <div id="wireByteComparisonBars" class="bar-group" style="margin-top:1.1rem;"></div>
+          </div>
+
+          <div>
+            <div class="code-header">
+              <span>HEX WIRE FRAMES (CHSV\x01 STATEVECTOR + CHDL\x01 RLE DELTA)</span>
+              <span class="tag tag-pass" id="wireSavingsBadge">99.98% Smaller</span>
+            </div>
+            <div class="code-box" id="wireHexInspectorBox" style="max-height:360px;">Click "Encode Binary Delta + Compact SQLite WAL" to inspect the live varint StateVector hex frame, run-length packed delta bytes, and SQLite checkpoint hydration check.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- TAB 4: SELECTIVE PER-AUTHOR UNDO LAB                              -->
+      <!-- ================================================================= -->
+      <div class="tab-panel" id="panel-undo-lab" role="tabpanel">
+        <div class="sim-header">
+          <div>
+            <h3 class="sim-title">4. Selective Per-Author Undo Lab</h3>
+            <p class="sim-desc">
+              Stage three consecutive edits by <code>@maya-eng</code>, <code>@nova-editor</code>, and <code>@alex-sre</code>, then invert <em>only</em> <code>@nova-editor</code> (or <em>only</em> Maya) in <code>0.073 ms</code> while proving subsequent teammates' edits remain 100% intact.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div style="display:flex; gap:0.55rem; flex-wrap:wrap; margin-bottom:1rem;">
+              <button type="button" class="btn btn-accent" id="btnStageUndo" onclick="stageUndoLab()">1. Stage 3 Interleaved Edits (Maya + Nova + Alex)</button>
+              <button type="button" class="btn btn-secondary" onclick="runSelectiveUndo('bedrock-nova')">↶ Undo @nova-editor Only</button>
+              <button type="button" class="btn btn-secondary" onclick="runSelectiveUndo('peer-maya')">↶ Undo @maya-eng Only</button>
+              <button type="button" class="btn btn-secondary" onclick="runSelectiveUndo('peer-alex')">↶ Undo @alex-sre Only</button>
+            </div>
+
+            <div class="control-label">
+              <span>Causal Transaction Ledger</span>
+              <span class="tag tag-soft">Per-Actor Tombstone / Restore</span>
+            </div>
+            <div id="undoTxList">
+              <div class="tx-item">
+                <span style="font-size:0.82rem; color:var(--ink-muted);">Click <strong>Stage 3 Interleaved Edits</strong> above to populate interleaved human and AI transactions.</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div id="undoVerdictBanner" class="verdict-banner verdict-accent">
+              <div>
+                <strong>SELECTIVE CAUSAL UNDO READY</strong><br />
+                <span style="font-size:0.82rem;">Stage three collaborators' edits, then revert the middle edit (<code>@nova-editor</code>) without losing Alex's newer edit below it.</span>
+              </div>
+              <span class="tag tag-accent">0 COLLATERAL LOSS</span>
+            </div>
+
+            <div class="presence-bar">
+              <span>AUTHOR-ATTRIBUTED DOCUMENT VIEW</span>
+              <span id="undoLatencyBadge" class="tag tag-pass">0.073 ms p50</span>
+            </div>
+            <div class="doc-surface" id="undoDocSurface" style="max-height:310px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- 06 · BENCHMARKS                                                     -->
+    <!-- =================================================================== -->
+    <section id="benchmarks" class="section" style="border-bottom:none;">
+      <div class="section-header">
+        <div>
+          <span class="section-kicker">06 · Benchmarks</span>
+          <h2 class="section-title">Benchmarks</h2>
+          <p class="section-desc" id="benchSubHeader"></p>
+        </div>
+        <span class="tag tag-obsidian mono" id="benchTimestampTag" style="background:var(--bg-obsidian); color:#FAF7F2;"></span>
+      </div>
+
+      <div class="grid-equal" style="margin-bottom:1.35rem;">
+        <div class="card">
+          <div class="control-label">
+            <span>Stage Latency Breakdown (Log Scale)</span>
+            <span class="tag tag-pass">Sub-2ms Local CRDT</span>
+          </div>
+          <div id="benchLatencySvgBox" style="margin-top:0.5rem; border:1.5px solid var(--border);"></div>
+        </div>
+
+        <div class="card">
+          <div class="control-label">
+            <span>Convergence, Co-Editing &amp; Wire Efficiency</span>
+            <span class="tag tag-accent">benchmarks/latest_results.json</span>
+          </div>
+          <div class="bar-group" id="benchMetricBars"></div>
+          <div class="prose-block-tech" style="margin-top:0.8rem; font-size:0.82rem;" id="benchFuzzSummaryNote"></div>
+        </div>
+      </div>
+
+      <div class="grid-equal" style="margin-bottom:1.35rem;">
+        <div>
+          <div class="code-header">
+            <span>BINARY STATEVECTOR + RLE DELTA VS SNAPSHOT SIZES</span>
+            <span class="tag tag-pass">99.98% Median Reduction</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Document Profile</th>
+                  <th>Wire Sync</th>
+                  <th>CRDT JSON</th>
+                  <th>Plain JSON</th>
+                  <th>SQLite Compact</th>
+                </tr>
+              </thead>
+              <tbody id="benchWireBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div class="code-header">
+            <span>MULTI-PEER CHAOS FUZZER SAMPLE SEEDS (4 REPLICAS)</span>
+            <span class="tag tag-accent">320 / 320 Converged</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Seed</th>
+                  <th>Reordered</th>
+                  <th>Duplicates</th>
+                  <th>Healed</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="benchFuzzBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="code-header">
+          <span>LIVE AMAZON BEDROCK (US.AMAZON.NOVA-LITE-V1:0) CONCURRENT CO-EDITING SUITE</span>
+          <span class="tag tag-pass">12 / 12 Tasks Passed · 544.0 ms p50</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Task ID</th>
+                <th>Document &amp; Anchored Section</th>
+                <th>Mode</th>
+                <th>Anchor Shift</th>
+                <th>Merge</th>
+                <th>Bedrock Latency</th>
+                <th>Tokens</th>
+              </tr>
+            </thead>
+            <tbody id="benchBedrockBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div>
+        <strong>ChorusCRDT</strong> · Scratch Yata Sequence CRDT, Relative Cursor Anchors, Binary StateVector Sync &amp; Selective Per-Author Undo on Amazon Bedrock.
+      </div>
+      <div class="mono" style="font-size:0.74rem;">
+        CloudFront + Private S3 OAC + Python 3.12 Lambda + SQLite WAL · $0.00 Idle
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const VALID_TABS = ["coeditor", "partition-sim", "wire-inspector", "undo-lab"];
+      let activeTab = "coeditor";
+      let activeTheme = "light";
+
+      // 1:1 Measured results from benchmarks/latest_results.json
+      const MEASURED_BENCHMARKS = {
+        benchmark_timestamp_utc: "2026-11-25T22:37:51Z",
+        environment: {
+          aws_region: "us-west-2",
+          bedrock_model: "us.amazon.nova-lite-v1:0"
+        },
+        headline_kpis: {
+          fuzz_seeds_total: 320,
+          fuzz_seeds_converged: 320,
+          convergence_rate_pct: 100.0,
+          interleaved_word_corruptions: 0,
+          coedit_tasks_total: 12,
+          coedit_tasks_passed: 12,
+          coedit_pass_rate_pct: 100.0,
+          selective_undo_cases_total: 12,
+          selective_undo_cases_passed: 12,
+          selective_undo_accuracy_pct: 100.0,
+          collateral_chars_lost: 0,
+          span_insert_p50_ms: 2.181,
+          span_insert_p95_ms: 2.62,
+          remote_merge_p50_ms: 1.884,
+          remote_merge_p95_ms: 1.966,
+          per_char_insert_p50_us: 32.07,
+          selective_undo_p50_ms: 0.073,
+          sqlite_compact_p50_ms: 2.291,
+          fuzz_seed_p50_ms: 14.879,
+          median_wire_exchange_bytes: 150.0,
+          wire_reduction_vs_crdt_snapshot_pct: 99.98,
+          wire_reduction_vs_plain_json_pct: 98.31,
+          bedrock_latency_p50_ms: 544.0,
+          bedrock_latency_p95_ms: 726.0,
+          bedrock_calls_measured: 12,
+          bedrock_mean_tokens: 203.6,
+          bedrock_total_tokens: 2443
+        },
+        fuzz_convergence: {
+          seeds_tested: 320,
+          replicas_per_seed: 4,
+          duplicate_packets_replayed: 20317,
+          reordered_packets_delivered: 198517,
+          dropped_packets_recovered_by_delta: 13828,
+          seed_p50_ms: 14.879,
+          seed_p95_ms: 18.254
+        },
+        wire_delta_matrix: [
+          { profile: "RFC Design Note (1.4 KB text)", doc_chars: 1278, edit_chars: 46, state_vector_bytes: 18, binary_delta_bytes: 118, wire_exchange_bytes: 136, full_crdt_snapshot_bytes: 263908, plain_doc_json_bytes: 2973, reduction_vs_crdt_snapshot_pct: 99.95, reduction_vs_plain_json_pct: 95.43, sqlite_checkpoint_bytes: 1382, sqlite_compact_ms: 1.177 },
+          { profile: "Architecture Spec (3.6 KB text)", doc_chars: 3310, edit_chars: 62, state_vector_bytes: 18, binary_delta_bytes: 134, wire_exchange_bytes: 152, full_crdt_snapshot_bytes: 686972, plain_doc_json_bytes: 7109, reduction_vs_crdt_snapshot_pct: 99.98, reduction_vs_plain_json_pct: 97.86, sqlite_checkpoint_bytes: 3414, sqlite_compact_ms: 1.861 },
+          { profile: "Incident COE Doc (6.2 KB text)", doc_chars: 5658, edit_chars: 58, state_vector_bytes: 18, binary_delta_bytes: 130, wire_exchange_bytes: 148, full_crdt_snapshot_bytes: 1175368, plain_doc_json_bytes: 11889, reduction_vs_crdt_snapshot_pct: 99.99, reduction_vs_plain_json_pct: 98.76, sqlite_checkpoint_bytes: 5762, sqlite_compact_ms: 2.72 },
+          { profile: "Multiplayer Handbook (10.5 KB text)", doc_chars: 9583, edit_chars: 63, state_vector_bytes: 18, binary_delta_bytes: 135, wire_exchange_bytes: 153, full_crdt_snapshot_bytes: 1991998, plain_doc_json_bytes: 19879, reduction_vs_crdt_snapshot_pct: 99.99, reduction_vs_plain_json_pct: 99.23, sqlite_checkpoint_bytes: 9687, sqlite_compact_ms: 4.316 }
+        ],
+        fuzz_sample_seeds: [
+          { seed: 10599520, reordered_deliveries: 638, duplicate_replays: 68, dropped_packets_healed: 42, elapsed_ms: 15.275, converged: true },
+          { seed: 10599521, reordered_deliveries: 686, duplicate_replays: 69, dropped_packets_healed: 48, elapsed_ms: 16.707, converged: true },
+          { seed: 10599522, reordered_deliveries: 521, duplicate_replays: 50, dropped_packets_healed: 62, elapsed_ms: 11.89, converged: true },
+          { seed: 10599523, reordered_deliveries: 524, duplicate_replays: 49, dropped_packets_healed: 49, elapsed_ms: 13.559, converged: true },
+          { seed: 10599524, reordered_deliveries: 620, duplicate_replays: 65, dropped_packets_healed: 46, elapsed_ms: 18.114, converged: true },
+          { seed: 10599525, reordered_deliveries: 478, duplicate_replays: 41, dropped_packets_healed: 42, elapsed_ms: 10.739, converged: true }
+        ],
+        bedrock_tasks: [
+          { task_id: "COEDIT-01", doc_id: "doc-rfc-sync", section_key: "latency_goal", ai_mode: "tighten_metrics", anchor_shifted_chars: 44, crdt_merge_ms: 41.353, bedrock_latency_ms: 593.0, total_tokens: 211 },
+          { task_id: "COEDIT-02", doc_id: "doc-rfc-sync", section_key: "anchor_protocol", ai_mode: "security_review", anchor_shifted_chars: 52, crdt_merge_ms: 28.567, bedrock_latency_ms: 634.0, total_tokens: 207 },
+          { task_id: "COEDIT-03", doc_id: "doc-rfc-sync", section_key: "cost_budget", ai_mode: "cost_breakdown", anchor_shifted_chars: 49, crdt_merge_ms: 35.258, bedrock_latency_ms: 398.0, total_tokens: 201 },
+          { task_id: "COEDIT-04", doc_id: "doc-rfc-sync", section_key: "latency_goal", ai_mode: "security_review", anchor_shifted_chars: 0, crdt_merge_ms: 38.269, bedrock_latency_ms: 482.0, total_tokens: 209 },
+          { task_id: "COEDIT-05", doc_id: "doc-incident-review", section_key: "impact_summary", ai_mode: "tighten_metrics", anchor_shifted_chars: 46, crdt_merge_ms: 27.34, bedrock_latency_ms: 525.0, total_tokens: 214 },
+          { task_id: "COEDIT-06", doc_id: "doc-incident-review", section_key: "root_cause", ai_mode: "tighten_metrics", anchor_shifted_chars: 52, crdt_merge_ms: 27.569, bedrock_latency_ms: 521.0, total_tokens: 205 },
+          { task_id: "COEDIT-07", doc_id: "doc-incident-review", section_key: "remediation_plan", ai_mode: "security_review", anchor_shifted_chars: 37, crdt_merge_ms: 30.796, bedrock_latency_ms: 344.0, total_tokens: 196 },
+          { task_id: "COEDIT-08", doc_id: "doc-incident-review", section_key: "remediation_plan", ai_mode: "cost_breakdown", anchor_shifted_chars: 0, crdt_merge_ms: 23.282, bedrock_latency_ms: 507.0, total_tokens: 187 },
+          { task_id: "COEDIT-09", doc_id: "doc-undo-spec", section_key: "problem_scope", ai_mode: "tighten_metrics", anchor_shifted_chars: 48, crdt_merge_ms: 39.076, bedrock_latency_ms: 563.0, total_tokens: 208 },
+          { task_id: "COEDIT-10", doc_id: "doc-undo-spec", section_key: "causal_inversion", ai_mode: "security_review", anchor_shifted_chars: 67, crdt_merge_ms: 35.702, bedrock_latency_ms: 764.0, total_tokens: 191 },
+          { task_id: "COEDIT-11", doc_id: "doc-undo-spec", section_key: "presence_ux", ai_mode: "tighten_metrics", anchor_shifted_chars: 53, crdt_merge_ms: 49.017, bedrock_latency_ms: 583.0, total_tokens: 211 },
+          { task_id: "COEDIT-12", doc_id: "doc-undo-spec", section_key: "presence_ux", ai_mode: "cost_breakdown", anchor_shifted_chars: 0, crdt_merge_ms: 45.326, bedrock_latency_ms: 695.0, total_tokens: 203 }
+        ]
+      };
+
+      const DOC_SECTIONS = {
+        "doc-rfc-sync": [
+          { key: "latency_goal", label: "Section 1 · Latency & 200-Editor Fan-Out Goal" },
+          { key: "anchor_protocol", label: "Section 2 · Logical Cursor & Comment Anchors" },
+          { key: "cost_budget", label: "Section 3 · Storage & Bandwidth Economics" }
+        ],
+        "doc-incident-review": [
+          { key: "impact_summary", label: "Section 1 · Customer Impact Summary" },
+          { key: "root_cause", label: "Section 2 · Technical Root Cause" },
+          { key: "remediation_plan", label: "Section 3 · Action Items & Guardrails" }
+        ],
+        "doc-undo-spec": [
+          { key: "problem_scope", label: "Section 1 · Linear Stack Undo Limitations" },
+          { key: "causal_inversion", label: "Section 2 · Causal Transaction Inversion" },
+          { key: "presence_ux", label: "Section 3 · Agent Presence & Review Controls" }
+        ]
+      };
+
+      const ARCH_NODE_DETAILS = {
+        "edge-browser": {
+          plane: "Layer ① · Collaborator Browsers & Serverless Edge",
+          title: "Collaborator Browser Workspace",
+          module: "web/index.html",
+          summary: "Renders named peer cursors (@maya-eng, @nova-editor, @alex-sre), color-coded author attribution spans, 4 live CRDT engineering labs, and URL hash state persistence.",
+          metric: "4 Interactive Labs · URL Hash State"
+        },
+        "edge-cloudfront": {
+          plane: "Layer ① · Collaborator Browsers & Serverless Edge",
+          title: "Amazon CloudFront HTTPS Router",
+          module: "infra/deploy_cloudfront.sh · Origin Access Control",
+          summary: "Serves static UI assets from a private S3 bucket and forwards /api/* requests directly to the Python 3.12 AWS Lambda Function URL on one unified HTTPS origin.",
+          metric: "HTTP/2 + HTTP/3 · Unified Origin"
+        },
+        "edge-s3": {
+          plane: "Layer ① · Collaborator Browsers & Serverless Edge",
+          title: "Private Amazon S3 Bucket (OAC)",
+          module: "s3://choruscrdt-web-796330847946-us-west-2",
+          summary: "Hosts web/index.html with all four S3 BlockPublicAccess controls active, permitting read requests exclusively from the signed CloudFront distribution.",
+          metric: "Public Access Blocked · $0 Idle"
+        },
+        "edge-lambda": {
+          plane: "Layer ① · Collaborator Browsers & Serverless Edge",
+          title: "AWS Lambda Python 3.12 API Origin",
+          module: "chorus_crdt/server.py :: lambda_handler",
+          summary: "Executes /api/doc/coedit, /api/sync/delta, /api/undo/actor, /api/fuzz/run, /api/benchmarks, and /api/health on demand with 512 MB memory and zero standing servers.",
+          metric: "Python 3.12 · 512 MB · 30s Timeout"
+        },
+        "crdt-yata": {
+          plane: "Layer ② · Scratch Yata CRDT & Relative Anchors",
+          title: "Scratch Yata Sequence Integrator",
+          module: "chorus_crdt/yata_engine.py :: YataDocument._integrate_ready_insert",
+          summary: "Addresses every character by (actor_id, lamport_clock) with origin_left and origin_right causal neighbors, preventing crossing origin lines and guaranteeing 0 interleaved word scrambles.",
+          metric: "32.07 us/char Insert · 1.884 ms Merge"
+        },
+        "crdt-anchors": {
+          plane: "Layer ② · Scratch Yata CRDT & Relative Anchors",
+          title: "RelativeAnchor & Range Resolver",
+          module: "chorus_crdt/yata_engine.py :: RelativeAnchor & RelativeRange",
+          summary: "Binds cursors, comments, and AI rewrite selections to immutable CRDT item IDs with before/after boundary bias so concurrent edits above the selection shift offsets automatically.",
+          metric: "100% Anchor Stability Across 320 Seeds"
+        },
+        "crdt-fuzzer": {
+          plane: "Layer ② · Scratch Yata CRDT & Relative Anchors",
+          title: "Out-of-Order Causal Buffer & Chaos Fuzzer",
+          module: "chorus_crdt/fuzzer.py :: run_convergence_fuzz_suite",
+          summary: "Buffers packets whose causal origins have not arrived yet, deduplicates replayed frames, and verifies Strong Eventual Consistency across 320 4-peer partition seeds.",
+          metric: "320 / 320 Seeds Converged (100.0%)"
+        },
+        "wire-delta": {
+          plane: "Layer ③ · Binary Wire Protocol & Selective Undo",
+          title: "Varint StateVector & RLE Binary Delta Codec",
+          module: "chorus_crdt/wire_sync.py :: encode_state_vector & encode_binary_delta",
+          summary: "Encodes per-actor contiguous sequence clocks in 18 B CHSV frames and packs contiguous character runs into CHDL binary deltas with deduplicated actor and transaction tables.",
+          metric: "150.0 B Median Wire · 99.98% Reduction"
+        },
+        "causal-undo": {
+          plane: "Layer ③ · Binary Wire Protocol & Selective Undo",
+          title: "Selective Per-Author Transaction Undo",
+          module: "chorus_crdt/yata_engine.py :: YataDocument.undo_actor",
+          summary: "Emits inverse LWW tombstone and restore mutations for one chosen actor's transaction while preserving every character inserted before or after by other collaborators.",
+          metric: "12 / 12 Exact · 0.073 ms p50"
+        },
+        "bedrock-peer": {
+          plane: "Layer ④ · Bedrock AI Peer & SQLite WAL Store",
+          title: "Amazon Bedrock Co-Authoring Peer",
+          module: "chorus_crdt/ai_collaborator.py :: invoke_bedrock_nova",
+          summary: "Forks a dedicated peer replica for @nova-editor, calls us.amazon.nova-lite-v1:0 via the Converse API on the pinned RelativeRange, and reconciles binary deltas with live human edits.",
+          metric: "12 / 12 Passed · 544.0 ms Median"
+        },
+        "sqlite-wal": {
+          plane: "Layer ④ · Bedrock AI Peer & SQLite WAL Store",
+          title: "SQLite WAL Op-Log & Checkpoint Compactor",
+          module: "chorus_crdt/wire_sync.py :: SQLiteCRDTStore",
+          summary: "Appends incremental binary delta frames to SQLite WAL and folds historical frames into single RLE-compacted binary checkpoints with verified lossless document hydration.",
+          metric: "2.291 ms Median Compaction"
+        }
+      };
+
+      function esc(v) {
+        return String(v == null ? "" : v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      // Render color-coded author spans + peer cursor badges
+      function renderAttributedSpans(spans, showCursors) {
+        if (!spans || !spans.length) return "";
+        let html = "";
+        let lastMayaIdx = -1;
+        let lastNovaIdx = -1;
+        let lastAlexIdx = -1;
+        spans.forEach(function (s, idx) {
+          if (s.actor_id === "peer-maya") lastMayaIdx = idx;
+          else if (s.actor_id === "bedrock-nova") lastNovaIdx = idx;
+          else if (s.actor_id === "peer-alex") lastAlexIdx = idx;
+        });
+
+        spans.forEach(function (sp, idx) {
+          let cls = "";
+          if (sp.actor_id === "peer-maya") cls = "span-human-maya";
+          else if (sp.actor_id === "bedrock-nova") cls = "span-ai-nova";
+          else if (sp.actor_id === "peer-alex") cls = "span-human-alex";
+
+          html += cls ? '<span class="' + cls + '">' + esc(sp.text) + '</span>' : esc(sp.text);
+          if (showCursors) {
+            if (idx === lastMayaIdx) html += '<span class="cursor-flag cursor-maya">▋@maya-eng</span>';
+            if (idx === lastNovaIdx) html += '<span class="cursor-flag cursor-nova">▋@nova-editor</span>';
+            if (idx === lastAlexIdx) html += '<span class="cursor-flag cursor-alex">▋@alex-sre</span>';
+          }
+        });
+        return html;
+      }
+
+      // Architecture SVG Inspector, Zoom & Export
+      function selectArchNode(nodeId) {
+        const info = ARCH_NODE_DETAILS[nodeId] || ARCH_NODE_DETAILS["crdt-yata"];
+        document.querySelectorAll("#chorusArchSvg .arch-node").forEach(function (el) {
+          el.classList.toggle("selected", el.getAttribute("data-arch-node") === nodeId);
+        });
+        document.querySelectorAll("#archNodePills [data-arch-btn]").forEach(function (btn) {
+          btn.classList.toggle("active", btn.getAttribute("data-arch-btn") === nodeId);
+        });
+        const detailBox = document.getElementById("archInspectorDetail");
+        if (detailBox) {
+          detailBox.innerHTML =
+            '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.45rem;">' +
+              '<div>' +
+                '<span class="tag tag-accent" style="margin-bottom:0.35rem;">' + esc(info.plane) + '</span>' +
+                '<h3 style="font-size:1.06rem; font-weight:800;">' + esc(info.title) + '</h3>' +
+              '</div>' +
+              '<span class="tag tag-pass">' + esc(info.metric) + '</span>' +
+            '</div>' +
+            '<div class="mono" style="font-size:0.73rem; color:var(--accent-main); margin-bottom:0.45rem;">Module / Resource: <code>' + esc(info.module) + '</code></div>' +
+            '<p style="font-size:0.91rem; color:var(--ink-muted); line-height:1.65;">' + esc(info.summary) + '</p>';
+        }
+      }
+
+      document.querySelectorAll("#chorusArchSvg .arch-node").forEach(function (el) {
+        el.addEventListener("click", function () { selectArchNode(el.getAttribute("data-arch-node")); });
+        el.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            selectArchNode(el.getAttribute("data-arch-node"));
+          }
+        });
+      });
+      document.querySelectorAll("#archNodePills [data-arch-btn]").forEach(function (btn) {
+        btn.addEventListener("click", function () { selectArchNode(btn.getAttribute("data-arch-btn")); });
+      });
+
+      const archSvg = document.getElementById("chorusArchSvg");
+      const archViewport = document.getElementById("archViewport");
+      const zoom100Btn = document.getElementById("zoom100Btn");
+      const zoom125Btn = document.getElementById("zoom125Btn");
+      const zoomResetBtn = document.getElementById("zoomResetBtn");
+      const archZoomLabel = document.getElementById("archZoomLabel");
+
+      function setArchZoom(mode) {
+        if (!archSvg) return;
+        const is125 = mode === "125";
+        archSvg.classList.toggle("zoom-125", is125);
+        archZoomLabel.textContent = is125 ? "Zoom: 125%" : "Zoom: 100%";
+        zoom100Btn.className = is125 ? "btn btn-secondary" : "btn btn-accent";
+        zoom125Btn.className = is125 ? "btn btn-accent" : "btn btn-secondary";
+        if (mode === "reset" && archViewport) {
+          archViewport.scrollTo({ left: 0, behavior: "smooth" });
+          selectArchNode("crdt-yata");
+        }
+      }
+      zoom100Btn.addEventListener("click", function () { setArchZoom("100"); });
+      zoom125Btn.addEventListener("click", function () { setArchZoom("125"); });
+      zoomResetBtn.addEventListener("click", function () { setArchZoom("reset"); });
+
+      document.getElementById("downloadArchSvgBtn").addEventListener("click", function () {
+        const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + archSvg.outerHTML;
+        const blob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "choruscrdt-architecture.svg";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      });
+
+      // URL Hash State for Theme & Active Tab
+      function parseHashState() {
+        const raw = (window.location.hash || "").replace(/^#/, "");
+        if (!raw) return;
+        raw.split("&").forEach(function (part) {
+          if (VALID_TABS.includes(part)) activeTab = part;
+          else if (part === "theme=dark" || part === "dark") activeTheme = "dark";
+          else if (part === "theme=light") activeTheme = "light";
+        });
+      }
+
+      function syncHashState() {
+        const hash = activeTheme === "dark" ? activeTab + "&theme=dark" : activeTab;
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", "#" + hash);
+        } else {
+          window.location.hash = hash;
+        }
+      }
+
+      function applyTheme(theme) {
+        activeTheme = theme;
+        document.documentElement.setAttribute("data-theme", theme);
+        document.getElementById("themeIcon").textContent = theme === "dark" ? "☀️" : "🌙";
+        document.getElementById("themeLabel").textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+        syncHashState();
+      }
+
+      document.getElementById("themeToggleBtn").addEventListener("click", function () {
+        applyTheme(activeTheme === "dark" ? "light" : "dark");
+      });
+
+      window.switchTab = function (tabId) {
+        if (!VALID_TABS.includes(tabId)) return;
+        activeTab = tabId;
+        document.querySelectorAll(".tab-btn").forEach(function (btn) {
+          const match = btn.getAttribute("data-tab") === tabId;
+          btn.classList.toggle("active", match);
+          btn.setAttribute("aria-selected", match ? "true" : "false");
+        });
+        document.querySelectorAll(".tab-panel").forEach(function (panel) {
+          panel.classList.toggle("active", panel.id === "panel-" + tabId);
+        });
+        syncHashState();
+      };
+
+      // Sticky Scroll-Spy for Section TOC
+      const spySectionIds = ["problem", "architecture", "implementation", "tradeoffs", "studio", "benchmarks"];
+      window.addEventListener("scroll", function () {
+        let currentId = "problem";
+        const offset = window.scrollY + 170;
+        spySectionIds.forEach(function (id) {
+          const el = document.getElementById(id);
+          if (el && el.offsetTop <= offset) currentId = id;
+        });
+        document.querySelectorAll("[data-spy-link]").forEach(function (lnk) {
+          lnk.classList.toggle("active", lnk.getAttribute("data-spy-link") === currentId);
+        });
+      }, { passive: true });
+
+      async function apiGet(path) {
+        const res = await fetch(path, { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      }
+
+      async function apiPost(path, body) {
+        const res = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(body || {})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+        return data;
+      }
+
+      // Render KPIs & Benchmark Section from 1:1 Measured JSON
+      function renderBenchmarksAndKpis() {
+        const k = MEASURED_BENCHMARKS.headline_kpis;
+        const f = MEASURED_BENCHMARKS.fuzz_convergence;
+
+        document.getElementById("heroKpiStrip").innerHTML =
+          '<div class="card kpi-card">' +
+            '<div class="kpi-val">' + k.fuzz_seeds_converged + ' / ' + k.fuzz_seeds_total + ' (100%)</div>' +
+            '<div class="kpi-label">Partition Fuzz Seeds Converged</div>' +
+            '<div class="kpi-sub"><em>0 scrambled words across ' + f.reordered_packets_delivered.toLocaleString() + ' reordered &amp; ' + f.duplicate_packets_replayed.toLocaleString() + ' duplicate ops</em></div>' +
+          '</div>' +
+          '<div class="card kpi-card">' +
+            '<div class="kpi-val">' + k.coedit_tasks_passed + ' / ' + k.coedit_tasks_total + ' (100%)</div>' +
+            '<div class="kpi-label">Live Bedrock Co-Edits Passed</div>' +
+            '<div class="kpi-sub"><em>Amazon Nova Lite (' + k.bedrock_latency_p50_ms.toFixed(0) + ' ms median) with 0 lost concurrent human chars</em></div>' +
+          '</div>' +
+          '<div class="card kpi-card">' +
+            '<div class="kpi-val">' + k.median_wire_exchange_bytes.toFixed(0) + ' B Wire Sync</div>' +
+            '<div class="kpi-label">' + k.wire_reduction_vs_crdt_snapshot_pct + '% Smaller Than CRDT JSON</div>' +
+            '<div class="kpi-sub"><em>18 B varint StateVector + RLE binary delta &amp; ' + k.sqlite_compact_p50_ms + ' ms SQLite compact</em></div>' +
+          '</div>' +
+          '<div class="card kpi-card">' +
+            '<div class="kpi-val">' + k.selective_undo_p50_ms + ' ms</div>' +
+            '<div class="kpi-label">Selective Per-Author Undo</div>' +
+            '<div class="kpi-sub"><em>' + k.selective_undo_cases_passed + ' / ' + k.selective_undo_cases_total + ' interleaved multi-author reverts with 0 collateral char loss</em></div>' +
+          '</div>';
+
+        document.getElementById("tabMetric1").textContent =
+          k.coedit_tasks_passed + " / " + k.coedit_tasks_total + " Passed · " + k.bedrock_latency_p50_ms.toFixed(0) + " ms median";
+        document.getElementById("tabMetric2").textContent =
+          k.fuzz_seeds_converged + " / " + k.fuzz_seeds_total + " Converged · 0 Corruptions";
+        document.getElementById("tabMetric3").textContent =
+          k.median_wire_exchange_bytes.toFixed(0) + " B Wire · " + k.wire_reduction_vs_crdt_snapshot_pct + "% Saved";
+        document.getElementById("tabMetric4").textContent =
+          k.selective_undo_cases_passed + " / " + k.selective_undo_cases_total + " Exact · " + k.selective_undo_p50_ms + " ms p50";
+
+        document.getElementById("benchSubHeader").textContent =
+          "Measured by benchmarks/run_benchmarks.py across 320 4-peer chaos fuzz seeds, 4 wire sync document profiles, 12 multi-author selective undo cases, and 12 live Amazon Bedrock (" +
+          MEASURED_BENCHMARKS.environment.bedrock_model + ") concurrent co-editing tasks in " +
+          MEASURED_BENCHMARKS.environment.aws_region + ".";
+        document.getElementById("benchTimestampTag").textContent = MEASURED_BENCHMARKS.benchmark_timestamp_utc;
+
+        const stages = [
+          { label: "Selective Undo", p50: k.selective_undo_p50_ms, color: "#059669" },
+          { label: "Remote Span Merge", p50: k.remote_merge_p50_ms, color: "#1D4ED8" },
+          { label: "Local Span Insert", p50: k.span_insert_p50_ms, color: "#0F766E" },
+          { label: "SQLite WAL Compact", p50: k.sqlite_compact_p50_ms, color: "#D97706" },
+          { label: "4-Peer Fuzz Seed", p50: k.fuzz_seed_p50_ms, color: "#7C3AED" },
+          { label: "Bedrock Nova Peer", p50: k.bedrock_latency_p50_ms, color: "#18181B" }
+        ];
+        function logW(ms) {
+          const val = Math.max(0.05, ms);
+          const pct = ((Math.log10(val) - Math.log10(0.05)) / (Math.log10(1000) - Math.log10(0.05))) * 335;
+          return Math.max(10, Math.min(335, +pct.toFixed(1)));
+        }
+        let svgRows = "";
+        stages.forEach(function (st, i) {
+          const y = 22 + i * 32;
+          svgRows +=
+            '<text x="12" y="' + (y + 13) + '" font-family="monospace" font-size="10.5" font-weight="700" fill="#141413">' + esc(st.label) + '</text>' +
+            '<rect x="162" y="' + y + '" width="335" height="16" fill="#F2ECE1" stroke="#18181B" stroke-width="1.2"/>' +
+            '<rect x="162" y="' + y + '" width="' + logW(st.p50) + '" height="16" fill="' + st.color + '"/>' +
+            '<text x="505" y="' + (y + 12) + '" font-family="monospace" font-size="10" fill="#141413">p50: ' + st.p50 + ' ms</text>';
+        });
+        document.getElementById("benchLatencySvgBox").innerHTML =
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 612 214" style="width:100%; height:auto; display:block;">' +
+          '<rect width="612" height="214" fill="#FAF7F2"/>' + svgRows + '</svg>';
+
+        document.getElementById("benchMetricBars").innerHTML =
+          '<div class="bar-row"><div class="bar-meta"><span>4-Peer Partition Fuzz Convergence (' + k.fuzz_seeds_converged + ' / ' + k.fuzz_seeds_total + ')</span><span>100%</span></div><div class="bar-track"><div class="bar-fill bar-fill-pass" style="width:100%;"></div></div></div>' +
+          '<div class="bar-row"><div class="bar-meta"><span>Live Bedrock Concurrent Co-Edit Pass Rate (' + k.coedit_tasks_passed + ' / ' + k.coedit_tasks_total + ')</span><span>100%</span></div><div class="bar-track"><div class="bar-fill bar-fill-accent" style="width:100%;"></div></div></div>' +
+          '<div class="bar-row"><div class="bar-meta"><span>Binary Delta Byte Savings vs CRDT JSON Snapshot</span><span>' + k.wire_reduction_vs_crdt_snapshot_pct + '%</span></div><div class="bar-track"><div class="bar-fill bar-fill-pass" style="width:' + k.wire_reduction_vs_crdt_snapshot_pct + '%;"></div></div></div>' +
+          '<div class="bar-row"><div class="bar-meta"><span>Selective Per-Author Undo Accuracy (' + k.selective_undo_cases_passed + ' / ' + k.selective_undo_cases_total + ')</span><span>100%</span></div><div class="bar-track"><div class="bar-fill bar-fill-accent" style="width:100%;"></div></div></div>';
+
+        document.getElementById("benchFuzzSummaryNote").innerHTML =
+          '<strong>Chaos Fuzzer Totals:</strong> Verified <code>' + f.reordered_packets_delivered.toLocaleString() + '</code> out-of-order deliveries, <code>' +
+          f.duplicate_packets_replayed.toLocaleString() + '</code> duplicate packet replays, and <code>' +
+          f.dropped_packets_recovered_by_delta.toLocaleString() + '</code> dropped packets healed via <code>CHSV</code> binary StateVector reconciliation (<code>' +
+          k.per_char_insert_p50_us + ' us</code> per-character insert).';
+
+        document.getElementById("benchWireBody").innerHTML = MEASURED_BENCHMARKS.wire_delta_matrix.map(function (w) {
+          return (
+            "<tr>" +
+              "<td><strong>" + esc(w.profile) + "</strong><div class='mono' style='font-size:0.67rem; color:var(--ink-muted);'>" + w.doc_chars.toLocaleString() + " chars · +" + w.edit_chars + " B edit</div></td>" +
+              "<td class='mono'><span class='tag tag-pass'>" + w.wire_exchange_bytes + " B</span></td>" +
+              "<td class='mono'>" + w.full_crdt_snapshot_bytes.toLocaleString() + " B<div style='font-size:0.66rem; color:var(--pass);'>-" + w.reduction_vs_crdt_snapshot_pct + "%</div></td>" +
+              "<td class='mono'>" + w.plain_doc_json_bytes.toLocaleString() + " B<div style='font-size:0.66rem; color:var(--pass);'>-" + w.reduction_vs_plain_json_pct + "%</div></td>" +
+              "<td class='mono'>" + w.sqlite_checkpoint_bytes.toLocaleString() + " B (" + w.sqlite_compact_ms + " ms)</td>" +
+            "</tr>"
+          );
+        }).join("");
+
+        document.getElementById("benchFuzzBody").innerHTML = MEASURED_BENCHMARKS.fuzz_sample_seeds.map(function (s) {
+          return (
+            "<tr>" +
+              "<td class='mono'><strong>" + s.seed + "</strong></td>" +
+              "<td class='mono'>" + s.reordered_deliveries + "</td>" +
+              "<td class='mono'>" + s.duplicate_replays + "</td>" +
+              "<td class='mono'>" + s.dropped_packets_healed + "</td>" +
+              "<td><span class='tag tag-pass'>CONVERGED (" + s.elapsed_ms + " ms)</span></td>" +
+            "</tr>"
+          );
+        }).join("");
+
+        document.getElementById("benchBedrockBody").innerHTML = MEASURED_BENCHMARKS.bedrock_tasks.map(function (t) {
+          const shiftTxt = t.anchor_shifted_chars > 0 ? "+" + t.anchor_shifted_chars + " chars" : "0 chars (below)";
+          return (
+            "<tr>" +
+              "<td class='mono'><strong>" + esc(t.task_id) + "</strong></td>" +
+              "<td class='mono'>" + esc(t.doc_id) + " :: <strong>" + esc(t.section_key) + "</strong></td>" +
+              "<td><span class='tag tag-soft'>" + esc(t.ai_mode) + "</span></td>" +
+              "<td class='mono' style='color:var(--accent-main); font-weight:700;'>" + esc(shiftTxt) + "</td>" +
+              "<td class='mono'>" + t.crdt_merge_ms + " ms</td>" +
+              "<td class='mono'><strong>" + t.bedrock_latency_ms + " ms</strong></td>" +
+              "<td class='mono'>" + t.total_tokens + "</td>" +
+            "</tr>"
+          );
+        }).join("");
+      }
+
+      // ------------------------------------------------------------------
+      // Tab 1: Live Co-Editor Logic
+      // ------------------------------------------------------------------
+      function populateSectionDropdown(docId) {
+        const list = DOC_SECTIONS[docId] || DOC_SECTIONS["doc-rfc-sync"];
+        const sel = document.getElementById("coeditSectionSelect");
+        sel.innerHTML = list.map(function (it) {
+          return '<option value="' + esc(it.key) + '">' + esc(it.label) + '</option>';
+        }).join("");
+      }
+
+      window.onDocSelectionChange = async function () {
+        const docId = document.getElementById("coeditDocSelect").value;
+        populateSectionDropdown(docId);
+        await loadDocState(docId);
+      };
+
+      async function loadDocState(docId) {
+        try {
+          const snap = await apiGet("/api/doc/state?doc_id=" + encodeURIComponent(docId));
+          document.getElementById("coeditDocSurface").innerHTML = renderAttributedSpans(snap.author_spans, true);
+          const secKey = document.getElementById("coeditSectionSelect").value;
+          if (snap.resolved_sections && snap.resolved_sections[secKey]) {
+            const rs = snap.resolved_sections[secKey];
+            document.getElementById("pinnedRangeBadge").textContent =
+              "offsets [" + rs.start_offset + ".." + rs.end_offset + "]";
+          }
+        } catch (err) {
+          document.getElementById("coeditDocSurface").textContent =
+            "# RFC-042: Sub-50ms Multiplayer CRDT Sync\n\nConnect to /api/doc/state to inspect live spans (" + err.message + ").";
+        }
+      }
+
+      window.runLiveCoedit = async function () {
+        const btn = document.getElementById("btnRunCoedit");
+        btn.disabled = true;
+        btn.textContent = "⏳ Syncing Maya + Live Bedrock...";
+        const docId = document.getElementById("coeditDocSelect").value;
+        const secKey = document.getElementById("coeditSectionSelect").value;
+        const aiMode = document.getElementById("coeditModeSelect").value;
+        const humanText = document.getElementById("coeditHumanText").value;
+        const humanPos = document.getElementById("coeditHumanPos").value;
+
+        try {
+          const res = await apiPost("/api/doc/coedit", {
+            doc_id: docId,
+            section_key: secKey,
+            ai_mode: aiMode,
+            concurrent_human_text: humanText,
+            human_position: humanPos
+          });
+
+          document.getElementById("coeditDocSurface").innerHTML = renderAttributedSpans(res.author_spans, true);
+          const p = res.anchor_shift_proof;
+          const w = res.wire_metrics;
+          const b = res.bedrock;
+
+          document.getElementById("coeditWirePill").textContent =
+            w.combined_wire_bytes + " B Wire (-" + w.reduction_vs_crdt_snapshot_pct + "%)";
+          document.getElementById("coeditEngineBadge").textContent =
+            b.model_id + " · " + b.bedrock_latency_ms + " ms";
+          document.getElementById("pinnedRangeBadge").textContent =
+            "shifted [" + p.offset_before_human_edit[0] + " -> " + p.offset_after_concurrent_merge[0] + "]";
+
+          document.getElementById("coeditAnchorProofBox").innerHTML =
+            '<div class="verdict-banner verdict-allow" style="margin-bottom:0;">' +
+              '<div>' +
+                '<strong>✓ RELATIVE ANCHOR SHIFTED ' + (p.shifted_by_chars >= 0 ? "+" : "") + p.shifted_by_chars + ' CHARS · 0 HUMAN CHARS LOST</strong><br/>' +
+                '<span style="font-size:0.8rem;">Initial offsets <code>[' + p.offset_before_human_edit.join("..") + ']</code> moved to <code>[' + p.offset_after_concurrent_merge.join("..") + ']</code> while merging in <code>' + res.crdt_merge_ms + ' ms</code>.</span>' +
+              '</div>' +
+              '<span class="tag tag-pass">CONVERGED</span>' +
+            '</div>';
+
+          document.getElementById("coeditTelemetryBox").textContent = JSON.stringify({
+            section_rewritten: res.section_key,
+            ai_rewritten_excerpt: p.ai_rewritten_excerpt,
+            bedrock_model: b.model_id,
+            bedrock_latency_ms: b.bedrock_latency_ms,
+            tokens: b.total_tokens,
+            crdt_merge_ms: res.crdt_merge_ms,
+            wire_metrics: w,
+            wal_receipt: res.wal_receipt
+          }, null, 2);
+        } catch (err) {
+          document.getElementById("coeditTelemetryBox").textContent = "Co-edit error: " + err.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "⚡ Co-Edit Concurrently (Maya + Live Bedrock)";
+        }
+      };
+
+      window.quickUndoAiInTab1 = async function () {
+        const docId = document.getElementById("coeditDocSelect").value;
+        try {
+          const res = await apiPost("/api/undo/actor", {
+            doc_id: docId,
+            actor_id: "bedrock-nova"
+          });
+          document.getElementById("coeditDocSurface").innerHTML = renderAttributedSpans(res.author_spans, true);
+          document.getElementById("coeditTelemetryBox").textContent =
+            "SELECTIVE UNDO (@nova-editor reverted in " + res.undo_latency_ms + " ms, Maya's concurrent edit preserved):\n" +
+            JSON.stringify({
+              undone_actor_id: res.undone_actor_id,
+              inverse_mutations_emitted: res.inverse_mutations_emitted,
+              preserved_collaborator_chars: res.preserved_collaborator_chars
+            }, null, 2);
+        } catch (err) {
+          document.getElementById("coeditTelemetryBox").textContent = "Undo error: " + err.message;
+        }
+      };
+
+      // ------------------------------------------------------------------
+      // Tab 2: Network Partition & Convergence Simulator
+      // ------------------------------------------------------------------
+      window.runLivePartitionFuzz = async function () {
+        const btn = document.getElementById("btnRunFuzz");
+        btn.disabled = true;
+        btn.textContent = "⏳ Running Chaos Partition & Fuzz Seeds...";
+        const mode = document.getElementById("fuzzScenarioSelect").value;
+        const seed = parseInt(document.getElementById("fuzzSeedInput").value || "10599520", 10);
+        const count = parseInt(document.getElementById("fuzzCountSelect").value || "60", 10);
+
+        try {
+          const res = await apiPost("/api/fuzz/run", {
+            seed: seed,
+            scenario_mode: mode,
+            num_fuzz_seeds: count
+          });
+          const pv = res.partition_views;
+          const fb = res.fuzz_batch;
+
+          document.getElementById("fuzzVerdictBanner").innerHTML =
+            '<div>' +
+              '<strong>✓ ' + fb.seeds_converged + ' / ' + fb.seeds_tested + ' LIVE FUZZ SEEDS CONVERGED (' + fb.convergence_rate_pct + '%) · ' + fb.interleaved_word_corruptions + ' CORRUPTIONS</strong><br/>' +
+              '<span style="font-size:0.82rem;">Pinned anchor resolved identically across all replicas to <code>[' + res.resolved_anchor.start + '..' + res.resolved_anchor.end + ']</code>: "' + esc(res.resolved_anchor.text) + '"</span>' +
+            '</div>' +
+            '<span class="tag tag-pass">MAYA == ALEX == NOVA</span>';
+
+          document.getElementById("partitionBeforePanes").innerHTML =
+            '<div class="card" style="padding:0.95rem;">' +
+              '<div class="control-label"><span class="mono" style="font-size:0.72rem;">Replica A · @maya-eng (Before Heal)</span><span class="tag tag-warn">Diverged</span></div>' +
+              '<pre class="mono" style="font-size:0.69rem; white-space:pre-wrap; color:var(--ink-muted);">' + esc(pv.peer_maya_before_heal) + '</pre>' +
+            '</div>' +
+            '<div class="card" style="padding:0.95rem;">' +
+              '<div class="control-label"><span class="mono" style="font-size:0.72rem;">Replica B · @alex-sre (Before Heal)</span><span class="tag tag-warn">Offline</span></div>' +
+              '<pre class="mono" style="font-size:0.69rem; white-space:pre-wrap; color:var(--ink-muted);">' + esc(pv.peer_alex_before_heal) + '</pre>' +
+            '</div>' +
+            '<div class="card" style="padding:0.95rem;">' +
+              '<div class="control-label"><span class="mono" style="font-size:0.72rem;">Replica C · @nova-editor (Before Heal)</span><span class="tag tag-soft">AI Peer</span></div>' +
+              '<pre class="mono" style="font-size:0.69rem; white-space:pre-wrap; color:var(--ink-muted);">' + esc(pv.peer_nova_before_heal) + '</pre>' +
+            '</div>';
+
+          document.getElementById("partitionConvergedBox").innerHTML = renderAttributedSpans(res.author_spans, true);
+          document.getElementById("partitionWireTag").textContent = res.wire_sync_bytes + " B Delta Heal";
+          document.getElementById("fuzzBatchMsTag").textContent = fb.total_suite_ms + " ms total";
+          document.getElementById("partitionFuzzJsonBox").textContent = JSON.stringify({
+            seeds_tested: fb.seeds_tested,
+            seeds_converged: fb.seeds_converged,
+            interleaved_word_corruptions: fb.interleaved_word_corruptions,
+            reordered_packets_delivered: fb.reordered_packets_delivered,
+            duplicate_packets_replayed: fb.duplicate_packets_replayed,
+            dropped_packets_recovered_by_delta: fb.dropped_packets_recovered_by_delta,
+            seed_p50_ms: fb.seed_p50_ms,
+            seed_p95_ms: fb.seed_p95_ms
+          }, null, 2);
+        } catch (err) {
+          document.getElementById("partitionFuzzJsonBox").textContent = "Fuzz error: " + err.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "▶ Run Partition Heal + Fuzz Batch";
+        }
+      };
+
+      // ------------------------------------------------------------------
+      // Tab 3: Binary StateVector Delta Inspector
+      // ------------------------------------------------------------------
+      window.runWireDeltaInspector = async function () {
+        const btn = document.getElementById("btnRunWire");
+        btn.disabled = true;
+        const docId = document.getElementById("wireDocSelect").value;
+        const editStr = document.getElementById("wireEditInput").value;
+        try {
+          const res = await apiPost("/api/sync/delta", {
+            doc_id: docId,
+            incremental_edit: editStr,
+            run_sqlite_compaction: true
+          });
+          const d = res.delta_metrics;
+          const c = res.sqlite_compaction;
+          document.getElementById("wireSavingsBadge").textContent =
+            d.wire_exchange_bytes + " B (-" + d.reduction_vs_crdt_snapshot_pct + "%)";
+
+          const maxB = Math.max(1, d.full_crdt_snapshot_bytes);
+          const plainPct = Math.max(3, (d.plain_doc_json_bytes / maxB) * 100);
+          const wirePct = Math.max(1.5, (d.wire_exchange_bytes / maxB) * 100);
+
+          document.getElementById("wireByteComparisonBars").innerHTML =
+            '<div class="bar-row"><div class="bar-meta"><span>Full CRDT JSON Snapshot</span><span>' + d.full_crdt_snapshot_bytes.toLocaleString() + ' B</span></div><div class="bar-track"><div class="bar-fill" style="width:100%; background:var(--fail);"></div></div></div>' +
+            '<div class="bar-row"><div class="bar-meta"><span>Plain Document JSON Re-Upload</span><span>' + d.plain_doc_json_bytes.toLocaleString() + ' B</span></div><div class="bar-track"><div class="bar-fill" style="width:' + plainPct + '%; background:var(--warn);"></div></div></div>' +
+            '<div class="bar-row"><div class="bar-meta"><span>CHSV StateVector (' + d.state_vector_bytes + ' B) + RLE Binary Delta (' + d.delta_bytes + ' B)</span><span>' + d.wire_exchange_bytes + ' B</span></div><div class="bar-track"><div class="bar-fill bar-fill-pass" style="width:' + wirePct + '%;"></div></div></div>';
+
+          document.getElementById("wireHexInspectorBox").textContent =
+            "CHSV\\x01 STATE VECTOR HEX (" + d.state_vector_bytes + " bytes):\n" +
+            d.state_vector_hex + "\n\n" +
+            "DECODED STATE VECTOR MAP:\n" +
+            JSON.stringify(res.state_vector_decoded, null, 2) + "\n\n" +
+            "CHDL\\x01 RLE BINARY DELTA HEX PREVIEW (" + d.delta_bytes + " bytes, " + d.rle_packed_records + " RLE record for " + d.missing_atomic_ops + " atomic chars):\n" +
+            d.delta_hex_preview + "\n\n" +
+            "SQLITE WAL CHECKPOINT COMPACTION & HYDRATION:\n" +
+            JSON.stringify({
+              lagging_peer_converged: res.lagging_peer_converged,
+              hydrated_roundtrip_verified: res.hydrated_roundtrip_verified,
+              compaction: c
+            }, null, 2);
+        } catch (err) {
+          document.getElementById("wireHexInspectorBox").textContent = "Wire inspector error: " + err.message;
+        } finally {
+          btn.disabled = false;
+        }
+      };
+
+      // ------------------------------------------------------------------
+      // Tab 4: Selective Per-Author Undo Lab
+      // ------------------------------------------------------------------
+      function renderUndoTransactions(txs) {
+        const box = document.getElementById("undoTxList");
+        if (!txs || !txs.length) {
+          box.innerHTML = '<div class="tx-item"><span style="font-size:0.82rem; color:var(--ink-muted);">No non-initial transactions recorded yet. Click Stage 3 Interleaved Edits.</span></div>';
+          return;
+        }
+        box.innerHTML = txs.map(function (t) {
+          const badgeCls = t.undone ? "tag-warn" : (t.author_kind === "ai" ? "tag-accent" : "tag-pass");
+          return (
+            '<div class="tx-item">' +
+              '<div>' +
+                '<div class="mono" style="font-size:0.7rem; font-weight:700;">' + esc(t.actor_id) + ' · ' + esc(t.tx_id) + '</div>' +
+                '<div style="font-size:0.82rem;">' + esc(t.summary) + '</div>' +
+              '</div>' +
+              '<span class="tag ' + badgeCls + '">' + (t.undone ? "UNDONE" : "+" + t.inserted_count + " / -" + t.deleted_count) + '</span>' +
+            '</div>'
+          );
+        }).join("");
+      }
+
+      window.stageUndoLab = async function () {
+        try {
+          const res = await apiPost("/api/undo/actor", {
+            doc_id: "doc-undo-spec",
+            action: "stage"
+          });
+          document.getElementById("undoDocSurface").innerHTML = renderAttributedSpans(res.author_spans, true);
+          renderUndoTransactions(res.transactions);
+          document.getElementById("undoVerdictBanner").className = "verdict-banner verdict-accent";
+          document.getElementById("undoVerdictBanner").innerHTML =
+            '<div><strong>3 INTERLEAVED COLLABORATOR EDITS STAGED</strong><br/><span style="font-size:0.82rem;">Notice Alex typed AFTER @nova-editor. Now click <em>Undo @nova-editor Only</em> to revert the middle AI edit while keeping both Maya and Alex intact.</span></div>' +
+            '<span class="tag tag-accent">READY TO REVERT</span>';
+        } catch (err) {
+          document.getElementById("undoDocSurface").textContent = "Stage error: " + err.message;
+        }
+      };
+
+      window.runSelectiveUndo = async function (actorId) {
+        try {
+          const res = await apiPost("/api/undo/actor", {
+            doc_id: "doc-undo-spec",
+            actor_id: actorId
+          });
+          document.getElementById("undoDocSurface").innerHTML = renderAttributedSpans(res.author_spans, true);
+          renderUndoTransactions(res.transactions);
+          document.getElementById("undoLatencyBadge").textContent = res.undo_latency_ms + " ms";
+          document.getElementById("undoVerdictBanner").className = "verdict-banner verdict-allow";
+          document.getElementById("undoVerdictBanner").innerHTML =
+            '<div><strong>✓ REVERTED ONLY ' + esc(actorId.toUpperCase()) + ' IN ' + res.undo_latency_ms + ' ms (' + res.inverse_mutations_emitted + ' INVERSE MUTATIONS)</strong><br/><span style="font-size:0.82rem;">Preserved collaborator characters: <code>' + esc(JSON.stringify(res.preserved_collaborator_chars)) + '</code></span></div>' +
+            '<span class="tag tag-pass">0 COLLATERAL LOSS</span>';
+        } catch (err) {
+          document.getElementById("undoDocSurface").textContent = "Undo error: " + err.message;
+        }
+      };
+
+      window.resetWorkspace = async function () {
+        try {
+          await apiPost("/api/reset", {});
+          await loadDocState(document.getElementById("coeditDocSelect").value);
+          const undoSnap = await apiGet("/api/doc/state?doc_id=doc-undo-spec");
+          document.getElementById("undoDocSurface").innerHTML = renderAttributedSpans(undoSnap.author_spans, true);
+          renderUndoTransactions(undoSnap.transactions);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      // Boot initialization
+      parseHashState();
+      applyTheme(activeTheme);
+      window.switchTab(activeTab);
+      selectArchNode("edge-browser");
+      renderBenchmarksAndKpis();
+      populateSectionDropdown("doc-rfc-sync");
+      loadDocState("doc-rfc-sync");
+      runLivePartitionFuzz();
+      apiGet("/api/doc/state?doc_id=doc-undo-spec").then(function (snap) {
+        document.getElementById("undoDocSurface").innerHTML = renderAttributedSpans(snap.author_spans, true);
+      }).catch(function () {});
+    })();
+  </script>
+</body>
+</html>
