@@ -1,7 +1,7 @@
 # ChorusCRDT: Multiplayer Human + AI Document Workspace, Sequence CRDT & Selective Causal Undo
 
-- **Live CloudFront Studio**: Pending CloudFront URL
-- **Live `/api/health` Endpoint**: Pending CloudFront Health URL
+- **Live CloudFront Studio**: https://d8786633yc2ef.cloudfront.net
+- **Live `/api/health` Endpoint**: https://d8786633yc2ef.cloudfront.net/api/health
 - **GitHub Repository**: https://github.com/ritwikareddykancharla/chorus-crdt-collab
 
 ChorusCRDT is a multiplayer document workspace built for shared human and AI co-authoring, deployed serverlessly on **Amazon CloudFront + Private S3 (OAC) + AWS Lambda (`python3.12`) + SQLite WAL + Amazon Bedrock (`us.amazon.nova-lite-v1:0`)**.
