@@ -4,7 +4,7 @@
 - **Live `/api/health` Endpoint**: https://d8786633yc2ef.cloudfront.net/api/health
 - **GitHub Repository**: https://github.com/ritwikareddykancharla/chorus-crdt-collab
 
-ChorusCRDT is a multiplayer document workspace built for shared human and AI co-authoring, deployed serverlessly on **Amazon CloudFront + Private S3 (OAC) + AWS Lambda (`python3.12`) + SQLite WAL + Amazon Bedrock (`us.amazon.nova-lite-v1:0`)**.
+ChorusCRDT is a multiplayer document workspace built for shared human and AI co-authoring, deployed serverlessly on **Amazon CloudFront + Private S3 (OAC) + AWS Lambda (serverless) + SQLite WAL + Amazon Bedrock (`us.amazon.nova-lite-v1:0`)**.
 
 ![ChorusCRDT System Architecture](docs/architecture.svg)
 

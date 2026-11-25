@@ -9,7 +9,7 @@
 
   <!-- Layer 1: Browser & Serverless Edge -->
   <rect x="22" y="18" width="1176" height="148" fill="#FAFAFA" stroke="#71717A" stroke-width="1.6" stroke-dasharray="8 6" />
-  <text x="36" y="42" font-family="sans-serif" font-size="16" font-weight="800" fill="#7C3AED">1. Multiplayer Browser Views &amp; Serverless AWS Edge (CloudFront + Private S3 OAC + Python 3.12 Lambda)</text>
+  <text x="36" y="42" font-family="sans-serif" font-size="16" font-weight="800" fill="#7C3AED">1. Multiplayer Browser Views &amp; Serverless AWS Edge (CloudFront + Private S3 OAC + AWS Lambda)</text>
 
   <rect x="40" y="56" width="200" height="84" fill="#EDE9FE" stroke="#18181B" stroke-width="2" />
   <text x="140" y="84" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="800" fill="#18181B">Collaborator Browsers</text>
@@ -27,7 +27,7 @@
   <text x="774" y="81" text-anchor="middle" font-family="monospace" font-size="9.5" fill="#065F46">web/index.html · BlockPublicAccess</text>
 
   <rect x="636" y="102" width="276" height="50" fill="#FEF3C7" stroke="#18181B" stroke-width="2" />
-  <text x="774" y="124" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="800" fill="#18181B">AWS Lambda API (Python 3.12)</text>
+  <text x="774" y="124" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="800" fill="#18181B">AWS Lambda API</text>
   <text x="774" y="142" text-anchor="middle" font-family="monospace" font-size="9.5" fill="#92400E">chorus_crdt/server.py · $0 Idle</text>
 
   <rect x="938" y="44" width="240" height="106" fill="#EDE9FE" stroke="#18181B" stroke-width="2" />

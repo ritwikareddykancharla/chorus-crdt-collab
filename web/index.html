@@ -968,7 +968,7 @@
       <div class="overview-callout">
         <h3>Overview</h3>
         <p>
-          ChorusCRDT implements a sequence Conflict-Free Replicated Data Type from scratch in Python 3.12 without external CRDT packages. Every character carries an immutable <code>(actor_id, lamport_clock)</code> identifier alongside its causal left and right neighbors (<code>origin_left</code> and <code>origin_right</code>). Before Amazon Bedrock (<code>us.amazon.nova-lite-v1:0</code>) rewrites a selected paragraph, ChorusCRDT binds a <code>RelativeRange</code> to those item IDs so concurrent human edits above the paragraph shift the resolved offsets automatically without slicing characters. Peers reconcile offline or reordered edits using compact <code>18 B</code> varint <code>StateVector</code> headers and run-length compressed binary deltas (<code>150.0 B</code> median wire exchange, <code>99.98%</code> smaller than full CRDT JSON snapshots), persisted in SQLite WAL checkpoints.
+          ChorusCRDT implements a sequence Conflict-Free Replicated Data Type from scratch with deterministic conflict resolution and binary delta encoding. Every character carries an immutable <code>(actor_id, lamport_clock)</code> identifier alongside its causal left and right neighbors (<code>origin_left</code> and <code>origin_right</code>). Before Amazon Bedrock (<code>us.amazon.nova-lite-v1:0</code>) rewrites a selected paragraph, ChorusCRDT binds a <code>RelativeRange</code> to those item IDs so concurrent human edits above the paragraph shift the resolved offsets automatically without slicing characters. Peers reconcile offline or reordered edits using compact <code>18 B</code> varint <code>StateVector</code> headers and run-length compressed binary deltas (<code>150.0 B</code> median wire exchange, <code>99.98%</code> smaller than full CRDT JSON snapshots), persisted in SQLite WAL checkpoints.
         </p>
       </div>
 
@@ -1033,7 +1033,7 @@
           <span class="section-kicker">02 · Architecture</span>
           <h2 class="section-title">Architecture</h2>
           <p class="section-desc">
-            Amazon CloudFront serves the static workspace from a private S3 bucket and routes <code>/api/*</code> calls to Python 3.12 on AWS Lambda. Click any component below to inspect its module, protocol invariants, and measured latency.
+            Amazon CloudFront serves the static workspace from a private S3 bucket and routes <code>/api/*</code> calls to AWS Lambda. Click any component below to inspect its module, protocol invariants, and measured latency.
           </p>
         </div>
       </div>
@@ -1064,7 +1064,7 @@
 
           <!-- LAYER 1: BROWSER & SERVERLESS AWS EDGE -->
           <path d="M 22,18 Q 610,14 1196,19 Q 1201,92 1195,164 Q 608,168 24,163 Q 19,90 22,18 Z" fill="#FAFAFA" stroke="#71717A" stroke-width="1.6" stroke-dasharray="8 6" />
-          <text x="36" y="41" class="svg-title" font-size="21" font-weight="700" fill="#7C3AED">① Collaborator Browsers &amp; Serverless AWS Edge (CloudFront + Private S3 OAC + Python 3.12 Lambda)</text>
+          <text x="36" y="41" class="svg-title" font-size="21" font-weight="700" fill="#7C3AED">① Collaborator Browsers &amp; Serverless AWS Edge (CloudFront + Private S3 OAC + AWS Lambda)</text>
 
           <!-- Node 1: Browser -->
           <g class="arch-node selected" data-arch-node="edge-browser" tabindex="0">
@@ -1108,7 +1108,7 @@
           <g class="arch-node" data-arch-node="edge-lambda" tabindex="0">
             <path d="M 640,100 Q 775,97 910,101 Q 913,127 909,153 Q 774,156 641,152 Q 637,126 640,100 Z" fill="#FEF3C7" />
             <path class="arch-stroke-main" d="M 640,100 Q 775,97 910,101 Q 913,127 909,153 Q 774,156 641,152 Q 637,126 640,100 Z" fill="none" stroke="#18181B" stroke-width="2" />
-            <text x="775" y="123" text-anchor="middle" class="svg-title" font-size="20" font-weight="700" fill="#18181B">AWS Lambda API (Python 3.12)</text>
+            <text x="775" y="123" text-anchor="middle" class="svg-title" font-size="20" font-weight="700" fill="#18181B">AWS Lambda API</text>
             <text x="775" y="142" text-anchor="middle" class="svg-mono" font-size="9.3" fill="#92400E">chorus_crdt/server.py · 512 MB</text>
           </g>
 
@@ -1251,7 +1251,7 @@
           <span class="section-kicker">03 · Implementation</span>
           <h2 class="section-title">Implementation</h2>
           <p class="section-desc">
-            Four focused Python 3.12 modules implement the Yata sequence CRDT, LEB128 varint wire encoding and SQLite compaction, randomized partition fuzzing, and live Amazon Bedrock co-authoring.
+            Four focused backend modules implement the Yata sequence CRDT, LEB128 varint wire encoding and SQLite compaction, randomized partition fuzzing, and live Amazon Bedrock co-authoring.
           </p>
         </div>
         <span class="tag tag-pass">13 / 13 Unit Tests Passing</span>
@@ -1383,7 +1383,7 @@
           <span class="section-kicker">05 · Live Demo</span>
           <h2 class="section-title">Live Demo</h2>
           <p class="section-desc">
-            All four interactive labs run against the live Python 3.12 CRDT engine and Amazon Bedrock (<code>us.amazon.nova-lite-v1:0</code>) over <code>/api/*</code>.
+            All four interactive labs run against the live serverless CRDT engine and Amazon Bedrock (<code>us.amazon.nova-lite-v1:0</code>) over <code>/api/*</code>.
           </p>
         </div>
         <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
@@ -1781,7 +1781,7 @@ CloudWatch alarms trigger if p99 CRDT fan-out exceeds 45 ms across active rooms.
         <strong>ChorusCRDT</strong> · Scratch Yata Sequence CRDT, Relative Cursor Anchors, Binary StateVector Sync &amp; Selective Per-Author Undo on Amazon Bedrock.
       </div>
       <div class="mono" style="font-size:0.74rem;">
-        CloudFront + Private S3 OAC + Python 3.12 Lambda + SQLite WAL · $0.00 Idle
+        CloudFront + Private S3 OAC + AWS Lambda + SQLite WAL · $0.00 Idle
       </div>
     </footer>
   </main>
@@ -1899,7 +1899,7 @@ CloudWatch alarms trigger if p99 CRDT fan-out exceeds 45 ms across active rooms.
           plane: "Layer ① · Collaborator Browsers & Serverless Edge",
           title: "Amazon CloudFront HTTPS Router",
           module: "infra/deploy_cloudfront.sh · Origin Access Control",
-          summary: "Serves static UI assets from a private S3 bucket and forwards /api/* requests directly to the Python 3.12 AWS Lambda Function URL on one unified HTTPS origin.",
+          summary: "Serves static UI assets from a private S3 bucket and forwards /api/* requests directly to the AWS Lambda Function URL on one unified HTTPS origin.",
           metric: "HTTP/2 + HTTP/3 · Unified Origin"
         },
         "edge-s3": {
@@ -1911,10 +1911,10 @@ CloudWatch alarms trigger if p99 CRDT fan-out exceeds 45 ms across active rooms.
         },
         "edge-lambda": {
           plane: "Layer ① · Collaborator Browsers & Serverless Edge",
-          title: "AWS Lambda Python 3.12 API Origin",
+          title: "AWS Lambda API Origin",
           module: "chorus_crdt/server.py :: lambda_handler",
           summary: "Executes /api/doc/coedit, /api/sync/delta, /api/undo/actor, /api/fuzz/run, /api/benchmarks, and /api/health on demand with 512 MB memory and zero standing servers.",
-          metric: "Python 3.12 · 512 MB · 30s Timeout"
+          metric: "AWS Lambda · 512 MB · 30s Timeout"
         },
         "crdt-yata": {
           plane: "Layer ② · Scratch Yata CRDT & Relative Anchors",
